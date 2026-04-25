@@ -1,0 +1,89 @@
+# ── Python / uv ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+backend/.venv/
+backend/.python-version
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Rust ──────────────────────────────────────────────────────────────────────
+target/
+**/*.rs.bk
+
+# ── Node / pnpm ───────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+pnpm-debug.log
+.npmrc.local
+
+# ── React / Vite (web) ────────────────────────────────────────────────────────
+frontend/web/dist/
+frontend/web/.vite/
+
+# ── React Native / Expo (mobile) ──────────────────────────────────────────────
+frontend/mobile/.expo/
+frontend/mobile/dist/
+frontend/mobile/web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# ── Nix ───────────────────────────────────────────────────────────────────────
+.direnv/
+result
+result-*
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.sql.bak
+postgres-data/         # docker volume mount if local
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example          # keep the example template
+*.pem
+*.key
+secrets/
+
+# ── ML / data ─────────────────────────────────────────────────────────────────
+*.pt                   # PyTorch model weights
+*.pkl                  # pickled models
+*.h5                   # HDF5 weights
+*.onnx                 # exported models
+data/raw/
+data/processed/
+notebooks/.ipynb_checkpoints/
+
+# ── ESP32 / embedded ──────────────────────────────────────────────────────────
+firmware/target/
+*.bin                  # compiled firmware binaries
+*.elf
+*.map
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/settings.json  # keep extensions.json, ignore personal settings
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
