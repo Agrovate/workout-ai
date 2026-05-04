@@ -53,6 +53,7 @@ postgres-data/         # docker volume mount if local
 
 # ── Environment & secrets ─────────────────────────────────────────────────────
 .env
+.envrc
 .env.*
 !.env.example          # keep the example template
 *.pem
