@@ -4,10 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment
 
-This project uses Nix flakes for reproducible dev environments. Enter with `nix develop` (or automatically via direnv: `direnv allow`). Three shells are available:
+This project uses Nix flakes for reproducible dev environments. Enter with `nix develop` (or automatically via direnv: `direnv allow`). Two shells are available:
 - `nix develop` — full stack (Python + Node)
-- `nix develop .#rust` — Rust/firmware toolchain
-- `nix develop .#firmware` — ESP32 firmware with espflash
+- `nix develop .#firmware` — ESP32 firmware (C/C++ via PlatformIO)
 
 ## Commands
 
@@ -33,11 +32,12 @@ cd frontend/mobile && pnpm start
 pnpm android / pnpm ios   # Platform-specific builds
 ```
 
-### Firmware (Rust, ESP32)
+### Firmware (C/C++, ESP32)
 ```bash
-just flash                # Build and flash to device
-cargo build --release     # Build only
-espflash flash --monitor  # Flash + serial monitor
+just flash                   # Build and flash to device (pio run --target upload --target monitor)
+just firmware-build          # Build only
+just firmware-monitor        # Open serial monitor only
+just firmware-clean          # Clean build artifacts
 ```
 
 ### Database
@@ -70,7 +70,7 @@ React 19 + TypeScript + Vite. Currently scaffold-stage with placeholder componen
 React Native 0.81 + Expo 54. Minimal implementation. Package manager: pnpm.
 
 ### Firmware (`firmware/`)
-Rust 2024 edition targeting ESP32. Currently a placeholder — intended for IoT sensor/wearable data collection.
+C/C++ targeting ESP32 via PlatformIO + ESP-IDF. Implements rep/set detection from IMU data (ICM-42688-P) and streams metrics over BLE to the mobile app.
 
 ### Integrations (`integrations/`)
 Stub connectors for Garmin, HealthKit, and Fitbit — designed for importing workout data from external sources.

@@ -1,27 +1,16 @@
 {
-  description = "Workout AI — full-stack dev environment (Python/uv + Rust + Node + Expo + PostgreSQL)";
+  description = "Workout AI — full-stack dev environment (Python/uv + Node + Expo + PostgreSQL)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
-
         pkgs = import nixpkgs {
-          inherit system overlays;
-        };
-
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-          targets = [
-            "x86_64-unknown-linux-gnu"
-            "wasm32-unknown-unknown"
-          ];
+          inherit system;
         };
       in {
         devShells.default = pkgs.mkShell {
@@ -84,40 +73,6 @@
             # uv config
             export UV_PYTHON="$(which python3)"
             export UV_PYTHON_PREFERENCE="only-system"
-          '';
-        };
-
-        devShells.rust = pkgs.mkShell {
-          name = "rust-dev";
-
-          packages = with pkgs; [
-            rustToolchain
-            pkg-config
-            openssl
-            cargo-watch
-            just
-            git
-          ];
-
-          shellHook = ''
-            echo ""
-            echo "╔══════════════════════════════════════════════╗"
-            echo "║        Workout AI — Rust Environment         ║"
-            echo "╠══════════════════════════════════════════════╣"
-            echo "║  Rustc  : $(rustc --version)"
-            echo "║  Cargo  : $(cargo --version)"
-            echo "╚══════════════════════════════════════════════╝"
-            echo ""
-
-            echo "  Quick commands:"
-            echo "    cargo run             → run backend service"
-            echo "    cargo watch -x run    → auto-reload dev loop"
-            echo "    cargo test            → run tests"
-            echo "    cargo build --release → optimized build"
-            echo ""
-
-            export RUST_LOG="info"
-            export RUST_BACKTRACE="1"
           '';
         };
 
