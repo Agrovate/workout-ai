@@ -21,6 +21,10 @@ build:
 test:
     cd backend && uv run pytest
 
+# Retrain the ML model from DB data and save artifact to backend/model.joblib
+train:
+    cd backend && DATABASE_URL=sqlite:///./dev.db uv run python -m app.cli.train
+
 # Seed the DB with a basic exercise set (backend must be running)
 seed:
     #!/usr/bin/env sh

@@ -10,13 +10,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 from app.routers import exercises, predictions, workouts
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Train the predictor from whatever is already in the DB.
+    # Runs after tables exist; safe on an empty DB (stays in heuristic mode).
+    from app.services.prediction import fit_predictor_from_db
+    with SessionLocal() as db:
+        fit_predictor_from_db(db)
     yield
 
 
