@@ -3,15 +3,15 @@ default:
 
 # Start the FastAPI backend (hot-reload)
 backend:
-    cd backend && DATABASE_URL=sqlite:///./dev.db uv run uvicorn app.main:app --reload
+    cd backend && DATABASE_URL=sqlite:///./dev.db uv run uvicorn app.main:app --reload --host 0.0.0.0
 
 # Start the Vite web dev server
 web:
     cd frontend/web && pnpm dev
 
-# Start the Expo mobile dev server
+# Start the Expo mobile dev server (tunnel mode for physical devices)
 mobile:
-    cd frontend/mobile && pnpm start
+    cd frontend/mobile && pnpm exec expo start --tunnel
 
 # Build the web frontend for production
 build:
@@ -46,6 +46,10 @@ seed:
             -H "Content-Type: application/json" \
             -d "$entry" > /dev/null && echo "Added: $entry" || echo "Skipped (exists?): $entry"
     done
+
+# Seed the DB with 12 weeks of realistic workout history (includes sensor data)
+seed-data:
+    cd backend && DATABASE_URL=sqlite:///./dev.db uv run python -m app.cli.seed
 
 # Delete the SQLite dev database (wipes all data)
 reset-db:

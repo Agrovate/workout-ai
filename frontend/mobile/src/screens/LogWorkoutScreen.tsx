@@ -6,6 +6,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createWorkout, getExercises, getPrediction } from '../api/client';
+import {
+  queryTodayReadiness,
+  querySetHeartRate,
+  requestHealthKitPermissions,
+  syncSessionHealth,
+  syncSetHR,
+  type Readiness,
+} from '../api/healthkit';
 import { ExercisePicker } from '../components/ExercisePicker';
 import type { Exercise } from '../types/api';
 import type { RootStackParamList } from '../navigation/types';
@@ -22,6 +30,8 @@ interface DraftSet {
   notes: string;
   predicting: boolean;
   expanded: boolean;
+  startedAt?: Date;
+  endedAt?: Date;
 }
 
 let keyCounter = 0;
@@ -57,6 +67,9 @@ export function LogWorkoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [readiness, setReadiness] = useState<Readiness>({ hrvRmssd: null, restingHr: null });
+  const sessionStartRef = useRef<Date>(new Date());
+
   const scrollRef = useRef<ScrollView>(null);
   const exMap = new Map(exercises.map((e) => [e.id, e]));
 
@@ -65,6 +78,13 @@ export function LogWorkoutScreen() {
       .then(setExercises)
       .catch(() => {})
       .finally(() => setLoadingExercises(false));
+
+    // Request HealthKit permissions and fetch today's readiness once on mount
+    requestHealthKitPermissions().then((granted) => {
+      if (granted) {
+        queryTodayReadiness().then(setReadiness);
+      }
+    });
   }, []);
 
   function updateSet(key: string, patch: Partial<DraftSet>) {
@@ -73,7 +93,12 @@ export function LogWorkoutScreen() {
 
   function addSet() {
     const last = sets[sets.length - 1];
-    setSets((prev) => [...prev, makeSet(last?.exercise_id ?? '')]);
+    const now = new Date();
+    // Mark the previous set as ended and give the new set a startedAt timestamp
+    setSets((prev) => [
+      ...prev.map((s, i) => i === prev.length - 1 ? { ...s, endedAt: now } : s),
+      { ...makeSet(last?.exercise_id ?? ''), startedAt: now },
+    ]);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }
 
@@ -86,7 +111,11 @@ export function LogWorkoutScreen() {
     if (!ex) return;
     updateSet(key, { predicting: true });
     try {
-      const pred = await getPrediction({ exercise_name: ex.name });
+      const pred = await getPrediction({
+        exercise_name: ex.name,
+        hrv_rmssd_today: readiness.hrvRmssd,
+        resting_hr_today: readiness.restingHr,
+      });
       updateSet(key, {
         predicting: false,
         weight: pred.recommended_weight > 0 ? String(pred.recommended_weight) : '',
@@ -109,8 +138,9 @@ export function LogWorkoutScreen() {
     }
     setError(null);
     setSubmitting(true);
+    const saveTime = new Date();
     try {
-      await createWorkout({
+      const session = await createWorkout({
         workout_name: sessionName.trim(),
         date,
         notes: notes.trim() || null,
@@ -123,6 +153,30 @@ export function LogWorkoutScreen() {
           notes: s.notes.trim() || null,
         })),
       });
+
+      // Fire-and-forget: sync HealthKit biometrics without blocking navigation
+      (async () => {
+        // Session-level: timestamps + readiness
+        await syncSessionHealth(session.id, {
+          started_at: sessionStartRef.current.toISOString(),
+          ended_at: saveTime.toISOString(),
+          hrv_rmssd_ms: readiness.hrvRmssd,
+          resting_hr_bpm: readiness.restingHr,
+        });
+
+        // Per-set: heart rate from the set's time window
+        const setHRItems = await Promise.all(
+          session.sets.map(async (savedSet, i) => {
+            const draft = sets[i];
+            const start = draft?.startedAt ?? sessionStartRef.current;
+            const end = draft?.endedAt ?? saveTime;
+            const { avgHr, peakHr } = await querySetHeartRate(start, end);
+            return { set_id: savedSet.id, avg_hr_bpm: avgHr, peak_hr_bpm: peakHr };
+          }),
+        );
+        await syncSetHR(setHRItems.filter((x) => x.avg_hr_bpm !== null));
+      })();
+
       navigation.navigate('Tabs');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save workout.');

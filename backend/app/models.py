@@ -33,6 +33,14 @@ class WorkoutSession(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # Session timing — used to window HealthKit HR queries after the session ends
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Daily readiness biometrics from Apple Watch (measured overnight, queried once per session)
+    hrv_rmssd_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resting_hr_bpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     sets: Mapped[list["WorkoutSet"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
@@ -58,6 +66,10 @@ class WorkoutSet(Base):
     peak_velocity_mm_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     velocity_loss_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "manual" | "hardware"
+
+    # Heart rate telemetry from Apple Watch (null when no watch is paired)
+    avg_hr_bpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    peak_hr_bpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     session: Mapped["WorkoutSession"] = relationship(back_populates="sets")
     exercise: Mapped["Exercise"] = relationship(back_populates="sets")

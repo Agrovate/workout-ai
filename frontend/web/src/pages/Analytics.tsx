@@ -222,13 +222,18 @@ export function Analytics() {
       .map(([date, weight]) => ({ date: fmtDate(date), weight, predicted: undefined as number | undefined }));
   }, [sessions, exercises, selectedExercise]);
 
-  // Merge historical + predicted into one chart dataset
+  // Merge historical + predicted into one chart dataset.
+  // The predicted line bridges from the last historical point to the next
+  // recommended weight — historical line stops at the last real session date.
   const progressionChartData = useMemo(() => {
     if (!prediction || progressionData.length === 0) return progressionData;
     const lastWeight = progressionData[progressionData.length - 1].weight;
     return [
       ...progressionData,
-      { date: 'Next', weight: lastWeight, predicted: prediction.recommended_weight },
+      // Bridge point: predicted line starts at last historical weight
+      { date: progressionData[progressionData.length - 1].date, weight: undefined as number | undefined, predicted: lastWeight },
+      // Next point: predicted line ends at recommended weight
+      { date: 'Next', weight: undefined as number | undefined, predicted: prediction.recommended_weight },
     ];
   }, [progressionData, prediction]);
 

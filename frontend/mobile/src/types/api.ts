@@ -15,6 +15,8 @@ export interface WorkoutSet {
   distance: number | null;
   seconds: number | null;
   notes: string | null;
+  avg_hr_bpm: number | null;
+  peak_hr_bpm: number | null;
 }
 
 export interface WorkoutSession {
@@ -24,6 +26,10 @@ export interface WorkoutSession {
   notes: string | null;
   created_at: string;
   sets: WorkoutSet[];
+  started_at: string | null;
+  ended_at: string | null;
+  hrv_rmssd_ms: number | null;
+  resting_hr_bpm: number | null;
 }
 
 export interface PredictionResponse {
@@ -60,4 +66,19 @@ export interface PredictionRequest {
   exercise_name: string;
   target_reps?: number | null;
   recent_rpe?: number | null;
+  hrv_rmssd_today?: number | null;
+  resting_hr_today?: number | null;
+}
+
+export interface SessionHealthUpdate {
+  started_at?: string | null;
+  ended_at?: string | null;
+  hrv_rmssd_ms?: number | null;
+  resting_hr_bpm?: number | null;
+}
+
+export interface SetHRData {
+  set_id: number;
+  avg_hr_bpm?: number | null;
+  peak_hr_bpm?: number | null;
 }

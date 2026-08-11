@@ -35,9 +35,11 @@ import math
 from typing import Any
 
 import joblib
+import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor, VotingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
+from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -73,9 +75,16 @@ def _heuristic(
     history: list[dict[str, Any]],
     target_reps: int | None,
     recent_rpe: float | None,
+    session_context: dict[str, Any] | None = None,
 ) -> tuple[float, int]:
     """
-    Simple RPE-based linear progression. Returns (weight, reps).
+    RPE-based linear progression with optional HRV fatigue dampening.
+
+    When HRV is more than 20% below the user's recent median (estimated from
+    history), the progression tier is dropped by one step to avoid pushing
+    on under-recovered days.
+
+    Returns (weight, reps).
     """
     if not history:
         return 0.0, target_reps or 8
@@ -87,6 +96,19 @@ def _heuristic(
 
     if weight <= 0:
         return 0.0, reps
+
+    # HRV fatigue dampening: if today's HRV is >20% below recent median, drop one tier
+    hrv_today = (session_context or {}).get("hrv_rmssd_today")
+    if hrv_today is not None:
+        hrv_vals = [
+            float(r["hrv_rmssd_ms"])
+            for r in history
+            if r.get("hrv_rmssd_ms") is not None
+        ]
+        if len(hrv_vals) >= 3:
+            median_hrv = sorted(hrv_vals)[len(hrv_vals) // 2]
+            if median_hrv > 0 and hrv_today < median_hrv * 0.80:
+                rpe = min(10.0, rpe + 1.0)  # treat as one tier harder → less progression
 
     if rpe < 6.5:
         weight *= 1.05
@@ -131,6 +153,7 @@ class ProgressionPredictor:
         self._pipeline: Pipeline | None = None
         self._fitted = False
         self._n_samples = 0
+        self._cv_rmse: float = 0.0   # calibration baseline for confidence
 
     # ── training ──────────────────────────────────────────────────────────────
 
@@ -163,9 +186,20 @@ class ProgressionPredictor:
         self._pipeline = _build_sklearn_pipeline()
         self._pipeline.fit(X, y)
         self._fitted = True
+
+        # Cross-validated RMSE — used to calibrate confidence scores.
+        # Uses k=3 minimum; scales up with dataset size.
+        cv_k = min(5, max(3, self._n_samples // 20))
+        cv_scores = cross_val_score(
+            _build_sklearn_pipeline(), X, y,
+            scoring="neg_root_mean_squared_error",
+            cv=cv_k,
+        )
+        self._cv_rmse = float(-cv_scores.mean())
         logger.info(
-            "ProgressionPredictor fitted on %d samples (ML mode active).",
-            self._n_samples,
+            "ProgressionPredictor fitted on %d samples (ML mode active). "
+            "CV-%d RMSE: %.2f kg",
+            self._n_samples, cv_k, self._cv_rmse,
         )
 
     # ── inference ─────────────────────────────────────────────────────────────
@@ -175,12 +209,16 @@ class ProgressionPredictor:
         history: list[dict[str, Any]],
         target_reps: int | None = None,
         recent_rpe: float | None = None,
+        session_context: dict[str, Any] | None = None,
     ) -> dict:
         """
         Predict the next set for an exercise.
 
         `history`: all previously logged sets for this exercise (newest-last),
-                   each a dict with keys: session_id, date, weight, reps, rpe, set_order.
+                   each a dict with keys: session_id, date, weight, reps, rpe,
+                   set_order, avg_hr_bpm (optional), hrv_rmssd_ms (optional).
+        `session_context`: optional dict with today's biometrics before any set:
+                   hrv_rmssd_today, resting_hr_today
         Returns a dict compatible with PredictionResponse.
         """
         if not self._fitted:
@@ -192,7 +230,7 @@ class ProgressionPredictor:
 
         # not enough global training data → heuristic
         if self._pipeline is None or self._n_samples < MIN_TRAIN_SAMPLES:
-            weight, reps = _heuristic(history, target_reps, recent_rpe)
+            weight, reps = _heuristic(history, target_reps, recent_rpe, session_context)
             return {
                 "exercise_name": exercise_name,
                 "recommended_weight": weight,
@@ -209,7 +247,7 @@ class ProgressionPredictor:
                 "confidence": None,
             }
 
-        feats = build_prediction_features(history, target_reps)
+        feats = build_prediction_features(history, target_reps, session_context)
         x = [[feats[col] for col in FEATURE_COLS]]
         raw_weight = float(self._pipeline.predict(x)[0])
         weight = _round_plate(max(0.0, raw_weight))
@@ -217,13 +255,7 @@ class ProgressionPredictor:
         # reps: prefer target, else use last logged, else default 8
         reps = target_reps or int(history[-1].get("reps") or 8)
 
-        # naive confidence: inverse of relative prediction error vs last weight
-        last_w = float(history[-1].get("weight") or 0.0)
-        if last_w > 0:
-            rel_diff = abs(weight - last_w) / last_w
-            confidence = round(max(0.0, 1.0 - rel_diff), 3)
-        else:
-            confidence = None
+        confidence = self._ensemble_confidence(x)
 
         return {
             "exercise_name": exercise_name,
@@ -231,6 +263,41 @@ class ProgressionPredictor:
             "recommended_reps": reps,
             "confidence": confidence,
         }
+
+    def _ensemble_confidence(self, x: list[list[float]]) -> float | None:
+        """
+        True ML confidence via ensemble disagreement calibrated by CV RMSE.
+
+        Each sub-estimator in the VotingRegressor (Ridge + GBR) makes its own
+        prediction. Their standard deviation measures how much the two models
+        disagree. We normalise by the cross-validated RMSE so the score is
+        relative to the model's typical error on unseen data:
+
+            normalised_uncertainty = std(individual_preds) / cv_rmse
+            confidence = exp(-normalised_uncertainty)
+
+        This maps to [0, 1]:
+            std == 0          → confidence 1.00  (perfect agreement)
+            std == cv_rmse    → confidence 0.37  (one σ of disagreement)
+            std == 2×cv_rmse  → confidence 0.14  (high disagreement)
+        """
+        if self._pipeline is None or self._cv_rmse <= 0:
+            return None
+
+        imputer  = self._pipeline.named_steps["impute"]
+        scaler   = self._pipeline.named_steps["scale"]
+        ensemble = self._pipeline.named_steps["model"]
+
+        X_imp = imputer.transform(x)
+        X_sc  = scaler.transform(X_imp)
+
+        individual_preds = np.array([
+            est.predict(X_sc)[0] for est in ensemble.estimators_
+        ])
+        disagreement = float(np.std(individual_preds))
+        normalised   = disagreement / self._cv_rmse
+        confidence   = float(np.exp(-normalised))
+        return round(min(1.0, max(0.0, confidence)), 3)
 
     # ── kept for backward compat with the old API ──────────────────────────────
     def predict(

@@ -13,7 +13,15 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.workoutai.mobile",
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Used to read heart rate and HRV from Apple Watch to improve workout progression recommendations.",
+        "NSHealthUpdateUsageDescription": "Not required — workout-ai only reads health data."
+      }
     },
     "android": {
       "adaptiveIcon": {

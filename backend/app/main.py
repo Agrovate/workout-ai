@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.routers import exercises, hardware, predictions, workouts
+from app.routers import exercises, hardware, healthkit, predictions, workouts
 
 
 @asynccontextmanager
@@ -40,6 +40,7 @@ app.include_router(exercises.router)
 app.include_router(workouts.router)
 app.include_router(predictions.router)
 app.include_router(hardware.router)
+app.include_router(healthkit.router)
 
 
 @app.get("/health")

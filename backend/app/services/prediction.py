@@ -67,15 +67,18 @@ def fit_predictor_from_db(db: Session) -> None:
         text(
             """
             SELECT
-                e.name            AS exercise_name,
+                e.name              AS exercise_name,
                 ws.session_id,
-                wss.date          AS date,
+                wss.date            AS date,
                 ws.set_order,
                 ws.weight,
                 ws.reps,
-                ws.rpe
+                ws.rpe,
+                ws.avg_hr_bpm,
+                wss.hrv_rmssd_ms,
+                wss.resting_hr_bpm
             FROM workout_sets ws
-            JOIN exercises     e   ON e.id   = ws.exercise_id
+            JOIN exercises        e   ON e.id   = ws.exercise_id
             JOIN workout_sessions wss ON wss.id = ws.session_id
             ORDER BY wss.date, ws.session_id, ws.set_order
             """
@@ -106,15 +109,18 @@ def _fetch_exercise_history(
         text(
             """
             SELECT
-                e.name            AS exercise_name,
+                e.name              AS exercise_name,
                 ws.session_id,
-                wss.date          AS date,
+                wss.date            AS date,
                 ws.set_order,
                 ws.weight,
                 ws.reps,
-                ws.rpe
+                ws.rpe,
+                ws.avg_hr_bpm,
+                wss.hrv_rmssd_ms,
+                wss.resting_hr_bpm
             FROM workout_sets ws
-            JOIN exercises     e   ON e.id   = ws.exercise_id
+            JOIN exercises        e   ON e.id   = ws.exercise_id
             JOIN workout_sessions wss ON wss.id = ws.session_id
             WHERE e.name = :exercise_name
             ORDER BY wss.date DESC, ws.set_order DESC
@@ -133,13 +139,20 @@ def predict_next_session(
     db: Session,
     target_reps: int | None = None,
     recent_rpe: float | None = None,
+    hrv_rmssd_today: float | None = None,
+    resting_hr_today: float | None = None,
 ) -> dict:
     predictor = get_predictor()
     history = _fetch_exercise_history(db, exercise_name)
+    session_context = {
+        "hrv_rmssd_today": hrv_rmssd_today,
+        "resting_hr_today": resting_hr_today,
+    } if (hrv_rmssd_today is not None or resting_hr_today is not None) else None
     result = predictor.predict_next(
         history=history,
         target_reps=target_reps,
         recent_rpe=recent_rpe,
+        session_context=session_context,
     )
     # ensure exercise_name is always set (cold-start history is empty)
     result["exercise_name"] = exercise_name

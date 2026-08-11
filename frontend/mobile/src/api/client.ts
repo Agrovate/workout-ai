@@ -10,7 +10,8 @@ import type {
 // iOS Simulator: http://localhost:8000
 // Android Emulator: http://10.0.2.2:8000
 // Physical device: http://<your-machine-LAN-ip>:8000
-const BASE = 'http://172.20.10.2:8000';
+export const BASE_URL = 'http://172.20.10.2:8000';
+const BASE = BASE_URL;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {

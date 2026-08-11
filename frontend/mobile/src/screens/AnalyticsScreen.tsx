@@ -303,31 +303,14 @@ export function AnalyticsScreen() {
             <>
               <LineChart
                 data={{
-                  labels: [
-                    ...progressionData.map((d) => d.date),
-                    ...(prediction ? ['Next'] : []),
-                  ],
+                  labels: progressionData.map((d) => d.date),
                   datasets: [
                     {
-                      // Historical line — purple
-                      data: [
-                        ...progressionData.map((d) => d.weight),
-                        ...(prediction ? [progressionData[progressionData.length - 1].weight] : []),
-                      ],
+                      data: progressionData.map((d) => d.weight),
                       color: (opacity = 1) => `rgba(168,85,247,${opacity})`,
                     },
-                    ...(prediction
-                      ? [{
-                          // Predicted segment — green, starts from last historical point
-                          data: [
-                            ...progressionData.map(() => progressionData[progressionData.length - 1].weight),
-                            prediction.recommended_weight,
-                          ],
-                          color: (opacity = 1) => `rgba(34,197,94,${opacity})`,
-                        }]
-                      : []),
                   ],
-                  legend: prediction ? ['Historical', 'Predicted'] : ['Historical'],
+                  legend: ['Historical'],
                 }}
                 width={CHART_W - 32}
                 height={200}

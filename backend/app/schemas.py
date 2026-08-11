@@ -37,6 +37,8 @@ class WorkoutSetOut(WorkoutSetBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     session_id: int
+    avg_hr_bpm: int | None = None
+    peak_hr_bpm: int | None = None
 
 
 class WorkoutSessionBase(BaseModel):
@@ -54,13 +56,37 @@ class WorkoutSessionOut(WorkoutSessionBase):
     id: int
     created_at: datetime
     sets: list[WorkoutSetOut] = []
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    hrv_rmssd_ms: float | None = None
+    resting_hr_bpm: float | None = None
+
+
+# ── HealthKit ingest schemas ──────────────────────────────────────────────────
+
+class SessionHealthUpdate(BaseModel):
+    """Biometrics attached to a session after it ends (sent by mobile post-save)."""
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    hrv_rmssd_ms: float | None = None
+    resting_hr_bpm: float | None = None
+
+
+class SetHRData(BaseModel):
+    """Per-set heart rate data queried from HealthKit for a completed set window."""
+    set_id: int
+    avg_hr_bpm: int | None = None
+    peak_hr_bpm: int | None = None
 
 
 class PredictionRequest(BaseModel):
     exercise_name: str
-    # Optional context the model can use if available (sensor enrichment, etc.)
+    # Optional context the model can use if available
     target_reps: int | None = None
     recent_rpe: float | None = None
+    # Apple Watch readiness signals — passed before the first set is logged
+    hrv_rmssd_today: float | None = None
+    resting_hr_today: float | None = None
 
 
 class PredictionResponse(BaseModel):

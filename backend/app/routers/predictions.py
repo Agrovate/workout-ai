@@ -16,6 +16,8 @@ def predict(payload: PredictionRequest, db: Session = Depends(get_db)):
             db=db,
             target_reps=payload.target_reps,
             recent_rpe=payload.recent_rpe,
+            hrv_rmssd_today=payload.hrv_rmssd_today,
+            resting_hr_today=payload.resting_hr_today,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
