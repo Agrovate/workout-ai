@@ -1,0 +1,85 @@
+.exercises-count {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.exercises-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.exercises-panel {
+  min-width: 0;
+}
+
+.exercise-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.exercise-group__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.exercise-group__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exercise-item {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+
+.exercise-item:hover {
+  background: var(--surface-2);
+}
+
+.exercise-item__name {
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.add-exercise-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: sticky;
+  top: 24px;
+}
+
+.panel-title {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.add-exercise-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 768px) {
+  .exercises-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .add-exercise-panel {
+    position: static;
+    order: -1;
+  }
+}

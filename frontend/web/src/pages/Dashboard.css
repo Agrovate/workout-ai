@@ -1,0 +1,114 @@
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+
+.workout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workout-card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.workout-card:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.workout-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.workout-card__date {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.workout-card__sets {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+.workout-card__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 4px;
+}
+
+.workout-card__notes {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workout-card__exercises {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.exercise-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: 99px;
+}
+
+@media (max-width: 768px) {
+  .stats-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
