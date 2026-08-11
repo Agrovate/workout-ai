@@ -2,24 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
+  ResponsiveContainer, Cell, Legend,
 } from 'recharts';
-import { getWorkouts, getExercises } from '../api/client';
-import type { WorkoutSession, Exercise } from '../types/api';
+import { getWorkouts, getExercises, getPrediction } from '../api/client';
+import type { WorkoutSession, Exercise, PredictionResponse } from '../types/api';
 import './Analytics.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function fmtWeek(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function fmtDate(iso: string): string {
@@ -30,26 +22,91 @@ function volume(weight: number | null, reps: number | null): number {
   return (weight ?? 0) * (reps ?? 0);
 }
 
-// ── custom tooltip ────────────────────────────────────────────────────────────
+// ── activity heatmap ──────────────────────────────────────────────────────────
 
-const VolumeTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
+function ActivityHeatmap({ sessions }: { sessions: WorkoutSession[] }) {
+  const { weeks } = useMemo(() => {
+    const map = new Map<string, number>();
+    sessions.forEach((s) => {
+      map.set(s.date, (map.get(s.date) ?? 0) + 1);
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = localDateStr(today);
+
+    // Start from the Sunday 52 weeks ago
+    const start = new Date(today);
+    start.setDate(today.getDate() - 52 * 7);
+    start.setDate(start.getDate() - start.getDay());
+
+    const weeks: { date: string; count: number; isToday: boolean; isFuture: boolean }[][] = [];
+    const current = new Date(start);
+
+    for (let w = 0; w < 53; w++) {
+      const week = [];
+      for (let d = 0; d < 7; d++) {
+        const dateStr = localDateStr(current);
+        week.push({
+          date: dateStr,
+          count: map.get(dateStr) ?? 0,
+          isToday: dateStr === todayStr,
+          isFuture: current > today,
+        });
+        current.setDate(current.getDate() + 1);
+      }
+      weeks.push(week);
+    }
+
+    return { weeks };
+  }, [sessions]);
+
+  // Fixed thresholds so a single-session day always shows as the lightest shade
+  const LEVEL_COLORS = ['var(--heatmap-empty)', '#c084fc', '#a855f7', '#7c3aed', '#581c87'];
+
+  function cellColor(count: number, isFuture: boolean): string {
+    if (isFuture || count === 0) return LEVEL_COLORS[0];
+    return LEVEL_COLORS[Math.min(4, count)];
+  }
+
   return (
-    <div className="chart-tooltip">
-      <div className="chart-tooltip__label">{label}</div>
-      <div className="chart-tooltip__row">
-        <span style={{ color: 'var(--accent)' }}>Volume</span>
-        <strong>{Number(payload[0].value).toLocaleString()} kg</strong>
+    <div className="heatmap">
+      <div className="heatmap__months">
+        {weeks.map((week, wi) => {
+          const d = new Date(week[0].date + 'T00:00:00');
+          const prev = wi > 0 ? new Date(weeks[wi - 1][0].date + 'T00:00:00') : null;
+          const label = (!prev || d.getMonth() !== prev.getMonth())
+            ? d.toLocaleDateString('en-US', { month: 'short' })
+            : '';
+          return <span key={wi} className="heatmap__month-label">{label}</span>;
+        })}
       </div>
-      {payload[1] && (
-        <div className="chart-tooltip__row">
-          <span style={{ color: 'var(--success)' }}>Sessions</span>
-          <strong>{payload[1].value}</strong>
-        </div>
-      )}
+      <div className="heatmap__grid">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="heatmap__week">
+            {week.map((day) => (
+              <div
+                key={day.date}
+                className={`heatmap__cell${day.isToday ? ' heatmap__cell--today' : ''}`}
+                style={{ background: cellColor(day.count, day.isFuture) }}
+                title={day.isFuture ? '' : `${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="heatmap__legend">
+        <span>Less</span>
+        {LEVEL_COLORS.map((color, i) => (
+          <div key={i} className="heatmap__cell" style={{ background: color }} />
+        ))}
+        <span>More</span>
+      </div>
     </div>
   );
-};
+}
+
+// ── custom tooltip ────────────────────────────────────────────────────────────
 
 const ProgressionTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -74,6 +131,8 @@ export function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedExercise, setSelectedExercise] = useState('');
+  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [predicting, setPredicting] = useState(false);
 
   useEffect(() => {
     Promise.all([getWorkouts(), getExercises()])
@@ -85,6 +144,16 @@ export function Analytics() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedExercise) return;
+    setPrediction(null);
+    setPredicting(true);
+    getPrediction({ exercise_name: selectedExercise })
+      .then(setPrediction)
+      .catch(() => setPrediction(null))
+      .finally(() => setPredicting(false));
+  }, [selectedExercise]);
 
   // exercise id → name map
   const exMap = useMemo(() => {
@@ -124,28 +193,6 @@ export function Analytics() {
     };
   }, [sessions, exercises]);
 
-  // ── weekly volume ──────────────────────────────────────────────────────────
-
-  const weeklyData = useMemo(() => {
-    const map = new Map<string, { vol: number; sessions: number; key: Date }>();
-    sessions.forEach((s) => {
-      const d = startOfWeek(new Date(s.date + 'T00:00:00'));
-      const k = d.toISOString();
-      const prev = map.get(k) ?? { vol: 0, sessions: 0, key: d };
-      prev.vol += s.sets.reduce((a, st) => a + volume(st.weight, st.reps), 0);
-      prev.sessions += 1;
-      map.set(k, prev);
-    });
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([, v]) => ({
-        week: fmtWeek(v.key),
-        volume: Math.round(v.vol),
-        sessions: v.sessions,
-      }));
-  }, [sessions]);
-
   // ── exercise progression ───────────────────────────────────────────────────
 
   const exercisesWithData = useMemo(() => {
@@ -172,8 +219,18 @@ export function Analytics() {
     });
     return Array.from(byDate.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, weight]) => ({ date: fmtDate(date), weight }));
+      .map(([date, weight]) => ({ date: fmtDate(date), weight, predicted: undefined as number | undefined }));
   }, [sessions, exercises, selectedExercise]);
+
+  // Merge historical + predicted into one chart dataset
+  const progressionChartData = useMemo(() => {
+    if (!prediction || progressionData.length === 0) return progressionData;
+    const lastWeight = progressionData[progressionData.length - 1].weight;
+    return [
+      ...progressionData,
+      { date: 'Next', weight: lastWeight, predicted: prediction.recommended_weight },
+    ];
+  }, [progressionData, prediction]);
 
   // ── muscle group volume ────────────────────────────────────────────────────
 
@@ -254,20 +311,11 @@ export function Analytics() {
             </div>
           </div>
 
-          {/* weekly volume chart */}
+          {/* activity heatmap */}
           <div className="card analytics__chart-card">
-            <h2 className="analytics__chart-title">Weekly Volume</h2>
-            <p className="analytics__chart-sub">Total training load (weight × reps) per week</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={weeklyData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="week" tick={{ fill: 'var(--text)', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--text)', fontSize: 12 }} axisLine={false} tickLine={false} width={55}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v} />
-                <Tooltip content={<VolumeTooltip />} cursor={{ fill: 'rgba(168,85,247,0.08)' }} />
-                <Bar dataKey="volume" fill="var(--accent)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              </BarChart>
-            </ResponsiveContainer>
+            <h2 className="analytics__chart-title">Activity</h2>
+            <p className="analytics__chart-sub">Workout frequency over the past year</p>
+            <ActivityHeatmap sessions={sessions} />
           </div>
 
           <div className="analytics__row">
@@ -289,20 +337,69 @@ export function Analytics() {
                 </select>
               </div>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={progressionData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <LineChart data={progressionChartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text)', fontSize: 12 }} axisLine={false} tickLine={false} width={45}
                     domain={['auto', 'auto']} />
                   <Tooltip content={<ProgressionTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                   <Line
-                    type="monotone" dataKey="weight" name="Weight"
+                    type="monotone" dataKey="weight" name="Historical"
                     stroke="var(--accent)" strokeWidth={2}
                     dot={{ r: 3, fill: 'var(--accent)', strokeWidth: 0 }}
                     activeDot={{ r: 5 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone" dataKey="predicted" name="Predicted"
+                    stroke="#22c55e" strokeWidth={2} strokeDasharray="6 3"
+                    dot={{ r: 4, fill: '#22c55e', strokeWidth: 0 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
+
+              {/* Prediction card */}
+              {predicting && (
+                <div className="pred-card pred-card--loading">
+                  <span className="spinner spinner-sm" /> Calculating prediction…
+                </div>
+              )}
+              {!predicting && prediction && (
+                <div className="pred-card">
+                  <div className="pred-card__header">
+                    <span className="pred-card__dot" />
+                    Next session prediction
+                  </div>
+                  <div className="pred-card__stats">
+                    <div className="pred-card__stat">
+                      <span className="pred-card__value">{prediction.recommended_weight}</span>
+                      <span className="pred-card__unit">kg</span>
+                    </div>
+                    <div className="pred-card__divider" />
+                    <div className="pred-card__stat">
+                      <span className="pred-card__value">{prediction.recommended_reps}</span>
+                      <span className="pred-card__unit">reps</span>
+                    </div>
+                    {prediction.confidence != null && (
+                      <>
+                        <div className="pred-card__divider" />
+                        <div className="pred-card__stat">
+                          <span className="pred-card__value">{Math.round(prediction.confidence * 100)}%</span>
+                          <span className="pred-card__unit">confidence</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {prediction.confidence != null && (
+                    <div className="pred-card__conf-track">
+                      <div className="pred-card__conf-fill" style={{ width: `${Math.round(prediction.confidence * 100)}%` }} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* muscle group distribution */}

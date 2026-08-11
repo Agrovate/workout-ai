@@ -158,6 +158,158 @@
   color: var(--text);
 }
 
+/* ── prediction card ───────────────────────────────────────────────────── */
+.pred-card {
+  margin-top: 14px;
+  background: rgba(34, 197, 94, 0.07);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pred-card--loading {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #22c55e;
+}
+
+.pred-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #22c55e;
+}
+
+.pred-card__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.pred-card__stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.pred-card__stat {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pred-card__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #22c55e;
+  line-height: 1;
+}
+
+.pred-card__unit {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.pred-card__divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(34, 197, 94, 0.25);
+  flex-shrink: 0;
+}
+
+.pred-card__conf-track {
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pred-card__conf-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── activity heatmap ──────────────────────────────────────────────────── */
+.heatmap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.heatmap__months {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding-bottom: 2px;
+}
+
+.heatmap__month-label {
+  width: 13px;
+  font-size: 10px;
+  color: var(--text);
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: visible;
+  user-select: none;
+}
+
+.heatmap__grid {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap__week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heatmap__cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+
+.heatmap__cell:hover {
+  opacity: 0.8;
+}
+
+.heatmap__cell--today {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.heatmap__legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 10px;
+  justify-content: flex-end;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.heatmap__legend span {
+  margin: 0 2px;
+}
+
 /* ── responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .analytics__stats {

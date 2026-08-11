@@ -23,6 +23,7 @@
   --radius-sm: 6px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   --transition: 140ms ease;
+  --heatmap-empty: #23233a;
   --sidebar-w: 220px;
   --mobile-nav-h: 60px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
