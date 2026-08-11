@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "imu.cpp"
+        "signal.cpp"
+        "ble.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        driver
+        esp_timer
+        bt
+        nvs_flash
+        freertos
+)

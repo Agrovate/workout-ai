@@ -125,12 +125,11 @@
           name = "workout-ai-firmware";
 
           packages = with pkgs; [
-            rustToolchain
-            espflash
-            probe-rs-tools
-            pkg-config
-            libiconv
-            minicom
+            platformio-core   # manages xtensa toolchain + ESP-IDF components
+            python311         # required by PlatformIO
+            minicom           # serial monitor fallback
+            git
+            just
           ];
 
           shellHook = ''
@@ -138,18 +137,15 @@
             echo "╔══════════════════════════════════════════╗"
             echo "║   Workout AI — ESP32 Firmware Shell      ║"
             echo "╠══════════════════════════════════════════╣"
-            echo "║  Rust : $(rustc --version)"
+            echo "║  PlatformIO : $(pio --version)"
             echo "╚══════════════════════════════════════════╝"
             echo ""
 
             echo "  Commands:"
-            echo "    cargo build --release    → build firmware"
-            echo "    espflash flash --monitor → flash to ESP32"
-            echo "    minicom -D /dev/ttyUSB0  → serial monitor"
+            echo "    just firmware-build      → compile (downloads toolchain on first run)"
+            echo "    just flash               → compile + flash + open monitor"
+            echo "    just firmware-monitor    → open serial monitor only"
             echo ""
-
-            export RUST_LOG="info"
-            export RUST_BACKTRACE="1"
           '';
         };
       }

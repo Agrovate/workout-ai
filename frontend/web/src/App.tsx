@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Exercises } from './pages/Exercises';
 import { LogWorkout } from './pages/LogWorkout';
 import { WorkoutDetail } from './pages/WorkoutDetail';
+import { Analytics } from './pages/Analytics';
 import './App.css';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/exercises" element={<Exercises />} />
             <Route path="/log" element={<LogWorkout />} />
             <Route path="/workouts/:id" element={<WorkoutDetail />} />
+            <Route path="/analytics" element={<Analytics />} />
           </Routes>
         </main>
         <MobileNav />

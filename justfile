@@ -52,6 +52,18 @@ reset-db:
     rm -f backend/dev.db
     @echo "dev.db removed — tables will be recreated on next backend start"
 
-# Build and flash ESP32 firmware
+# Build and flash ESP32 firmware (run from nix develop .#firmware shell)
 flash:
-    cd firmware && cargo build --release && espflash flash --monitor
+    cd firmware && pio run --target upload --target monitor
+
+# Build firmware without flashing
+firmware-build:
+    cd firmware && pio run
+
+# Open serial monitor only (firmware already flashed)
+firmware-monitor:
+    cd firmware && pio device monitor
+
+# Clean firmware build artifacts
+firmware-clean:
+    cd firmware && pio run --target clean
