@@ -39,7 +39,7 @@ import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor, VotingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GroupKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -153,7 +153,8 @@ class ProgressionPredictor:
         self._pipeline: Pipeline | None = None
         self._fitted = False
         self._n_samples = 0
-        self._cv_rmse: float = 0.0   # calibration baseline for confidence
+        self._cv_rmse: float = 0.0        # out-of-fold RMSE (grouped by session)
+        self._abs_resid_q80: float = 0.0  # 80th-pct out-of-fold |error| — conformal band
 
     # ── training ──────────────────────────────────────────────────────────────
 
@@ -162,15 +163,20 @@ class ProgressionPredictor:
         Train from a list of dicts as returned by the DB query.
         Expected keys: exercise_name, session_id, date, weight, reps, rpe, set_order.
         """
-        X_dicts, y = build_training_dataset(records)
-        self._fit(X_dicts, y)
+        X_dicts, y, meta = build_training_dataset(records)
+        self._fit(X_dicts, y, meta)
 
     def fit_from_csv(self, csv_path: str) -> None:
         """Train from a Strong App CSV export."""
         records = _load_strong_csv(csv_path)
         self.fit_from_records(records)
 
-    def _fit(self, X_dicts: list[dict[str, float]], y: list[float]) -> None:
+    def _fit(
+        self,
+        X_dicts: list[dict[str, float]],
+        y: list[float],
+        meta: list[dict[str, str]] | None = None,
+    ) -> None:
         self._n_samples = len(y)
         if self._n_samples < MIN_TRAIN_SAMPLES:
             logger.info(
@@ -183,23 +189,39 @@ class ProgressionPredictor:
             return
 
         X = [[row[col] for col in FEATURE_COLS] for row in X_dicts]
+        y_arr = np.asarray(y, dtype=float)
         self._pipeline = _build_sklearn_pipeline()
-        self._pipeline.fit(X, y)
+        self._pipeline.fit(X, y_arr)
         self._fitted = True
 
-        # Cross-validated RMSE — used to calibrate confidence scores.
-        # Uses k=3 minimum; scales up with dataset size.
-        cv_k = min(5, max(3, self._n_samples // 20))
-        cv_scores = cross_val_score(
-            _build_sklearn_pipeline(), X, y,
-            scoring="neg_root_mean_squared_error",
-            cv=cv_k,
+        # Honest out-of-fold error, grouped by session so near-duplicate sets
+        # from one workout never straddle the train/test split (which would
+        # inflate the scores). Feeds both the RMSE baseline and the conformal
+        # residual band used for confidence.
+        groups = (
+            [m["session_id"] for m in meta]
+            if meta and len(meta) == self._n_samples
+            else [str(i) for i in range(self._n_samples)]
         )
-        self._cv_rmse = float(-cv_scores.mean())
+        n_groups = len(set(groups))
+        cv_k = min(5, max(3, self._n_samples // 20), n_groups)
+
+        if cv_k >= 2:
+            oof = cross_val_predict(
+                _build_sklearn_pipeline(), X, y_arr,
+                cv=GroupKFold(n_splits=cv_k), groups=groups,
+            )
+            abs_err = np.abs(oof - y_arr)
+            self._cv_rmse = float(np.sqrt(np.mean((oof - y_arr) ** 2)))
+            self._abs_resid_q80 = float(np.quantile(abs_err, 0.80))
+        else:
+            self._cv_rmse = 0.0
+            self._abs_resid_q80 = 0.0
+
         logger.info(
-            "ProgressionPredictor fitted on %d samples (ML mode active). "
-            "CV-%d RMSE: %.2f kg",
-            self._n_samples, cv_k, self._cv_rmse,
+            "ProgressionPredictor fitted on %d samples / %d sessions (ML mode). "
+            "grouped CV-%d RMSE: %.2f, 80%% |error| band: ±%.2f",
+            self._n_samples, n_groups, cv_k, self._cv_rmse, self._abs_resid_q80,
         )
 
     # ── inference ─────────────────────────────────────────────────────────────
@@ -255,7 +277,7 @@ class ProgressionPredictor:
         # reps: prefer target, else use last logged, else default 8
         reps = target_reps or int(history[-1].get("reps") or 8)
 
-        confidence = self._ensemble_confidence(x)
+        confidence = self._prediction_confidence(x, weight)
 
         return {
             "exercise_name": exercise_name,
@@ -264,39 +286,38 @@ class ProgressionPredictor:
             "confidence": confidence,
         }
 
-    def _ensemble_confidence(self, x: list[list[float]]) -> float | None:
+    def _prediction_confidence(
+        self, x: list[list[float]], predicted_weight: float
+    ) -> float | None:
         """
-        True ML confidence via ensemble disagreement calibrated by CV RMSE.
+        Confidence anchored to real held-out error, not sub-model agreement.
 
-        Each sub-estimator in the VotingRegressor (Ridge + GBR) makes its own
-        prediction. Their standard deviation measures how much the two models
-        disagree. We normalise by the cross-validated RMSE so the score is
-        relative to the model's typical error on unseen data:
+        Start from the conformal band ``_abs_resid_q80`` — the 80th percentile
+        of out-of-fold absolute error — and widen it a little when Ridge and
+        the GBR disagree sharply on *this* point:
 
-            normalised_uncertainty = std(individual_preds) / cv_rmse
-            confidence = exp(-normalised_uncertainty)
+            effective_band = q80 + 0.5 * std(sub_model_preds)
+            confidence     = 1 - effective_band / max(predicted_weight, effective_band)
 
-        This maps to [0, 1]:
-            std == 0          → confidence 1.00  (perfect agreement)
-            std == cv_rmse    → confidence 0.37  (one σ of disagreement)
-            std == 2×cv_rmse  → confidence 0.14  (high disagreement)
+        A ±6 kg band on a 100 kg call → ~0.94; the same band on a 15 kg call
+        → ~0.6 (the model really is proportionally vaguer on light lifts).
+        Local disagreement can only *widen* the band, never zero the score,
+        so a well-calibrated prediction stays confident even if the sub-models
+        differ. Returns None until the grouped CV has produced a band.
         """
-        if self._pipeline is None or self._cv_rmse <= 0:
+        q80 = getattr(self, "_abs_resid_q80", 0.0)
+        if self._pipeline is None or self._cv_rmse <= 0 or q80 <= 0:
             return None
 
         imputer  = self._pipeline.named_steps["impute"]
         scaler   = self._pipeline.named_steps["scale"]
         ensemble = self._pipeline.named_steps["model"]
+        X_sc = scaler.transform(imputer.transform(x))
+        sub_preds = np.array([est.predict(X_sc)[0] for est in ensemble.estimators_])
 
-        X_imp = imputer.transform(x)
-        X_sc  = scaler.transform(X_imp)
-
-        individual_preds = np.array([
-            est.predict(X_sc)[0] for est in ensemble.estimators_
-        ])
-        disagreement = float(np.std(individual_preds))
-        normalised   = disagreement / self._cv_rmse
-        confidence   = float(np.exp(-normalised))
+        effective_band = q80 + 0.5 * float(np.std(sub_preds))
+        denom = max(abs(predicted_weight), effective_band)
+        confidence = 1.0 - effective_band / denom
         return round(min(1.0, max(0.0, confidence)), 3)
 
     # ── kept for backward compat with the old API ──────────────────────────────
@@ -325,6 +346,8 @@ class ProgressionPredictor:
     def load(self, artifact_path: str) -> None:
         obj = joblib.load(artifact_path)
         self.__dict__.update(obj.__dict__)
+        # Backfill attributes added after older artifacts were saved.
+        self._abs_resid_q80 = getattr(self, "_abs_resid_q80", 0.0)
         logger.info(
             "Model loaded from %s (%d training samples, ML=%s)",
             artifact_path,

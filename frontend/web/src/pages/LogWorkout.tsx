@@ -4,6 +4,12 @@ import { createWorkout, getExercises, getPrediction } from '../api/client';
 import type { Exercise } from '../types/api';
 import './LogWorkout.css';
 
+interface Suggestion {
+  weight: number;
+  reps: number;
+  confidence: number | null;
+}
+
 interface DraftSet {
   key: string;
   exercise_id: string;
@@ -13,6 +19,7 @@ interface DraftSet {
   notes: string;
   predicting: boolean;
   expanded: boolean;
+  suggestion: Suggestion | null;
 }
 
 let keyCounter = 0;
@@ -25,6 +32,7 @@ const makeSet = (exercise_id = ''): DraftSet => ({
   notes: '',
   predicting: false,
   expanded: false,
+  suggestion: null,
 });
 
 function parseNum(s: string): number | null {
@@ -83,6 +91,13 @@ export function LogWorkout() {
         predicting: false,
         weight: pred.recommended_weight > 0 ? String(pred.recommended_weight) : '',
         reps: String(pred.recommended_reps),
+        suggestion: pred.recommended_weight > 0
+          ? {
+              weight: pred.recommended_weight,
+              reps: pred.recommended_reps,
+              confidence: pred.confidence,
+            }
+          : null,
       });
     } catch {
       updateSet(key, { predicting: false });
@@ -246,6 +261,31 @@ export function LogWorkout() {
                     </svg>
                   </button>
                 </div>
+
+                {set.suggestion && (
+                  <div className="ai-suggestion">
+                    <span className="ai-suggestion__spark">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 3l1.9 5.8L20 10l-5.1 3.2L16 19l-4-3.6L8 19l1.1-5.8L4 10l6.1-1.2z" />
+                      </svg>
+                      AI suggestion
+                    </span>
+                    <span className="ai-suggestion__value">
+                      {set.suggestion.weight} kg &times; {set.suggestion.reps}
+                    </span>
+                    {set.suggestion.confidence != null && (
+                      <span className="ai-suggestion__conf">
+                        <span className="ai-suggestion__bar">
+                          <span
+                            className="ai-suggestion__bar-fill"
+                            style={{ width: `${Math.round(set.suggestion.confidence * 100)}%` }}
+                          />
+                        </span>
+                        {Math.round(set.suggestion.confidence * 100)}% confident
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {set.expanded && (
                   <div className="field-row set-row__extra">

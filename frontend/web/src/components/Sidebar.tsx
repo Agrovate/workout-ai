@@ -50,8 +50,10 @@ export function Sidebar() {
   return (
     <nav className="sidebar">
       <div className="sidebar__brand">
-        <BotIcon />
-        <span>Workout AI</span>
+        <span className="sidebar__brand-mark"><BotIcon /></span>
+        <span className="sidebar__brand-text">
+          Workout <span>AI</span>
+        </span>
       </div>
       <ul className="sidebar__nav">
         {navItems.map((item) => (
@@ -69,6 +71,10 @@ export function Sidebar() {
           </li>
         ))}
       </ul>
+      <div className="sidebar__foot">
+        <span className="sidebar__status-dot" />
+        Progression model ready
+      </div>
     </nav>
   );
 }

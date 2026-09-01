@@ -11,6 +11,11 @@ import math
 from datetime import date, timedelta
 from typing import Any
 
+# A "working set" is one loaded to at least this fraction of the session's top
+# weight for that exercise. Warm-up ramp sets fall below the line and are
+# excluded from training so the model predicts the working weight, not the ramp.
+WORKING_SET_FRACTION = 0.85
+
 
 # ── column names ──────────────────────────────────────────────────────────────
 FEATURE_COLS = [
@@ -60,6 +65,7 @@ def build_prediction_features(
     history: list[dict[str, Any]],
     target_reps: int | None,
     session_context: dict[str, Any] | None = None,
+    as_of_date: Any = None,
 ) -> dict[str, float]:
     """
     Compute a single feature vector from an exercise's logged history.
@@ -70,6 +76,11 @@ def build_prediction_features(
 
     `session_context` carries today's biometrics before any set is logged:
         hrv_rmssd_today, resting_hr_today
+
+    `as_of_date` is the date the prediction is being made for (a `date` or
+    ISO string). `days_since_last` is measured relative to it. Defaults to
+    today, which is correct for live inference; training passes the target
+    set's own date so historical rows aren't all dated "now".
 
     Missing sensor values become float('nan') — the SimpleImputer fills
     medians from training so sparse early data is handled automatically.
@@ -92,16 +103,26 @@ def build_prediction_features(
     last_reps   = float(last.get("reps")   or 0.0)
     last_rpe    = float(last.get("rpe")    or 0.0)
 
-    # --- days since last session ---
+    # --- days since last session (relative to as_of_date, default today) ---
     last_date = last.get("date")
     if isinstance(last_date, str):
         try:
             last_date = date.fromisoformat(last_date)
         except ValueError:
             last_date = None
+
+    ref_date = as_of_date
+    if isinstance(ref_date, str):
+        try:
+            ref_date = date.fromisoformat(ref_date[:10])
+        except ValueError:
+            ref_date = None
+    if not isinstance(ref_date, date):
+        ref_date = date.today()
+
     days_since = 0.0
     if isinstance(last_date, date):
-        days_since = float((date.today() - last_date).days)
+        days_since = max(0.0, float((ref_date - last_date).days))
 
     # --- session count ---
     sessions_total = float(len({_session_key(r) for r in history}))
@@ -148,15 +169,19 @@ def build_prediction_features(
 
 def build_training_dataset(
     all_records: list[dict[str, Any]],
-) -> tuple[list[dict[str, float]], list[float]]:
+) -> tuple[list[dict[str, float]], list[float], list[dict[str, str]]]:
     """
-    Build (X, y) from the full workout history.
+    Build (X, y, meta) from the full workout history.
 
-    For each logged set we compute the feature vector from the history
-    *preceding* that set (leave-one-out style), so the model learns to
-    predict weight given past performance.
+    For each logged *working* set we compute the feature vector from the
+    working-set history *preceding* it (leave-one-out style), so the model
+    learns to predict the working weight given past performance. Warm-up
+    ramp sets (below ``WORKING_SET_FRACTION`` of the session's top weight
+    for that exercise) are dropped — including them made the model try to
+    fit both the ramp and the working weight from the same features.
 
-    Only sets with a recorded weight are kept as training targets.
+    ``meta[i]`` carries ``{date, session_id, exercise_name}`` for row ``i``
+    so callers can build a grouped / time-aware cross-validation split.
     """
     # group by exercise
     by_exercise: dict[str, list[dict]] = {}
@@ -167,8 +192,9 @@ def build_training_dataset(
 
     X: list[dict[str, float]] = []
     y: list[float] = []
+    meta: list[dict[str, str]] = []
 
-    for _ex, records in by_exercise.items():
+    for ex, records in by_exercise.items():
         # sort by session date, then set_order within session
         records = sorted(
             records,
@@ -177,14 +203,40 @@ def build_training_dataset(
                 int(r.get("set_order") or 0),
             ),
         )
-        for i, rec in enumerate(records):
-            if rec.get("weight") is None:
+
+        # keep only working sets, session by session
+        sessions: dict[Any, list[dict]] = {}
+        for r in records:
+            sessions.setdefault(_session_key(r), []).append(r)
+
+        working: list[dict] = []
+        for sess_rows in sessions.values():
+            weights = [
+                float(r["weight"]) for r in sess_rows if r.get("weight") is not None
+            ]
+            if not weights:
                 continue
-            history_so_far = records[:i]  # everything before this set
+            cutoff = max(weights) * WORKING_SET_FRACTION
+            working.extend(
+                r for r in sess_rows
+                if r.get("weight") is not None and float(r["weight"]) >= cutoff
+            )
+
+        for i, rec in enumerate(working):
+            history_so_far = working[:i]  # working sets before this one
             if not history_so_far:
                 continue  # skip cold-start rows (nothing to learn from)
-            feats = build_prediction_features(history_so_far, target_reps=rec.get("reps"))
+            feats = build_prediction_features(
+                history_so_far,
+                target_reps=rec.get("reps"),
+                as_of_date=rec.get("date"),
+            )
             X.append(feats)
             y.append(float(rec["weight"]))
+            meta.append({
+                "date": str(rec.get("date") or ""),
+                "session_id": str(rec.get("session_id") or rec.get("date") or ""),
+                "exercise_name": ex,
+            })
 
-    return X, y
+    return X, y, meta

@@ -11,8 +11,10 @@
     left: 0;
     right: 0;
     height: var(--mobile-nav-h);
-    background: var(--surface);
-    border-top: 1px solid var(--border);
+    background: rgba(23, 23, 31, 0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-soft);
     z-index: 100;
   }
 
@@ -31,5 +33,19 @@
 
   .mobile-nav__item--active {
     color: var(--accent);
+  }
+
+  .mobile-nav__item--active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 28px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent-grad);
+  }
+
+  .mobile-nav__item {
+    position: relative;
   }
 }

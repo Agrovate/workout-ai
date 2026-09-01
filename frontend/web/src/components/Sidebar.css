@@ -1,11 +1,11 @@
 .sidebar {
   width: var(--sidebar-w);
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, #17171f 0%, #131319 100%);
+  border-right: 1px solid var(--border-soft);
   display: flex;
   flex-direction: column;
-  padding: 20px 12px;
-  gap: 32px;
+  padding: 22px 14px;
+  gap: 28px;
   position: sticky;
   top: 0;
   height: 100svh;
@@ -15,31 +15,50 @@
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
+  gap: 11px;
+  padding: 4px 6px;
+}
+
+.sidebar__brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+  flex-shrink: 0;
+}
+
+.sidebar__brand-text {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-h);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.02em;
 }
 
-.sidebar__brand svg {
-  color: var(--accent);
-  flex-shrink: 0;
+.sidebar__brand-text span {
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .sidebar__nav {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  flex: 1;
 }
 
 .sidebar__link {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 11px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 14px;
@@ -53,18 +72,50 @@
 }
 
 .sidebar__link--active {
-  background: var(--accent-dim);
-  color: var(--accent);
+  background: var(--accent-grad-soft);
+  color: var(--text-h);
+  font-weight: 600;
 }
 
-.sidebar__link--active:hover {
-  background: var(--accent-dim);
+.sidebar__link--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-grad);
+}
+
+.sidebar__link--active .sidebar__icon {
   color: var(--accent);
 }
 
 .sidebar__icon {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.sidebar__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border-soft);
+}
+
+.sidebar__status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-dim);
   flex-shrink: 0;
 }
 

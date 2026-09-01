@@ -1,6 +1,10 @@
 .exercises-count {
-  font-size: 13px;
-  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
 }
 
 .exercises-layout {
@@ -17,35 +21,66 @@
 .exercise-groups {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .exercise-group__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--text);
-  margin-bottom: 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.exercise-group__label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-grad);
 }
 
 .exercise-group__list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .exercise-item {
-  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.exercise-item::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
   transition: background var(--transition);
 }
 
 .exercise-item:hover {
   background: var(--surface-2);
+  border-color: var(--border-soft);
+  transform: translateX(2px);
+}
+
+.exercise-item:hover::before {
+  background: var(--accent);
 }
 
 .exercise-item__name {
@@ -54,23 +89,24 @@
 }
 
 .add-exercise-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface) 0%, #15151c 100%);
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 22px;
   position: sticky;
   top: 24px;
+  box-shadow: var(--shadow-sm), var(--ring);
 }
 
 .panel-title {
   font-size: 15px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .add-exercise-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 @media (max-width: 768px) {
