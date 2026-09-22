@@ -119,8 +119,27 @@ const ProgressionTooltip = ({ active, payload, label }: any) => {
           <strong>{p.value} kg</strong>
         </div>
       ))}
+      {payload.some((p: any) => p.dataKey === 'predicted' && p.payload.confidence != null) && (
+        <div className="chart-tooltip__row chart-tooltip__row--sub">
+          <span>Confidence</span>
+          <strong>
+            {Math.round(
+              payload.find((p: any) => p.dataKey === 'predicted').payload.confidence * 100,
+            )}%
+          </strong>
+        </div>
+      )}
     </div>
   );
+};
+
+// Forecast dots fade out as confidence drops, so the further-out (less
+// trustworthy) end of the projection reads visually lighter without needing
+// a hover.
+const ForecastDot = ({ cx, cy, payload }: any) => {
+  if (payload?.predicted == null) return null;
+  const opacity = payload.confidence != null ? Math.max(0.25, payload.confidence) : 1;
+  return <circle cx={cx} cy={cy} r={4} fill="#22c55e" fillOpacity={opacity} stroke="none" />;
 };
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -244,6 +263,7 @@ export function Analytics() {
         date: fmtDate(p.date),
         weight: undefined as number | undefined,
         predicted: p.recommended_weight,
+        confidence: p.confidence,
       })),
     ];
   }, [progressionData, forecast]);
@@ -370,7 +390,7 @@ export function Analytics() {
                   <Line
                     type="monotone" dataKey="predicted" name="Forecast"
                     stroke="#22c55e" strokeWidth={2} strokeDasharray="6 3"
-                    dot={{ r: 4, fill: '#22c55e', strokeWidth: 0 }}
+                    dot={<ForecastDot />}
                     activeDot={{ r: 5 }}
                     connectNulls={false}
                   />
