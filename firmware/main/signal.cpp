@@ -1,12 +1,17 @@
 /*
  * signal.cpp — Rep detection state machine + velocity integration.
  *
- * The barbell moves vertically.  After subtracting the calibrated gravity
- * vector from az, we have az_net:
+ * WorkoutBand is worn on the wrist/forearm, not clipped to the bar — the
+ * wrist's vertical acceleration during a lift is used as a proxy for bar
+ * velocity. This holds well for vertical press/pull patterns (bench, row,
+ * curl, overhead press) where the wrist tracks the bar closely; it's a
+ * weaker proxy for lifts with a lot of independent wrist rotation or a
+ * non-vertical bar path. After subtracting the calibrated gravity vector
+ * from az, we have az_net:
  *
- *   az_net ≈ 0        bar at rest
- *   az_net < 0        eccentric (bar accelerating downward)
- *   az_net > 0        concentric (bar being driven up)
+ *   az_net ≈ 0        arm at rest
+ *   az_net < 0        eccentric (arm accelerating downward)
+ *   az_net > 0        concentric (arm being driven up)
  *
  * State machine:
  *
@@ -147,7 +152,7 @@ bool signal_process(const ImuSample *samples, int count, SignalEvent *out_event)
 
         case STATE_IDLE:
             if (az_net < ECCENTRIC_THRESH) {
-                // Bar moving down — start of a rep
+                // Arm moving down — start of a rep
                 if (!s_in_set) {
                     s_in_set       = true;
                     s_set_start_us = now;
@@ -194,7 +199,7 @@ bool signal_process(const ImuSample *samples, int count, SignalEvent *out_event)
 
         case STATE_ECCENTRIC:
             if (az_net > CONCENTRIC_THRESH) {
-                // Bar bouncing up — concentric phase starts
+                // Arm bouncing up — concentric phase starts
                 enter_state(STATE_CONCENTRIC, now);
                 begin_integration(az_net, now);
             } else if (az_net > STILLNESS_THRESH &&
@@ -215,7 +220,7 @@ bool signal_process(const ImuSample *samples, int count, SignalEvent *out_event)
 
             if (az_net < LOCKOUT_THRESH &&
                 (now - s_state_enter_us) > MIN_CONCENTRIC_US) {
-                // Bar has decelerated — entering lockout
+                // Arm has decelerated — entering lockout
                 enter_state(STATE_LOCKOUT, now);
             }
             break;

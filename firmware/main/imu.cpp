@@ -6,6 +6,10 @@
  *
  * Wiring:  SDA → GPIO21   SCL → GPIO22   (configurable via imu_init args)
  *          VCC → 3.3V      GND → GND      AD0 → GND (I2C addr 0x68)
+ *
+ * Mounting: worn on the wrist/forearm (band strap), oriented so the
+ * accelerometer's Z axis is vertical with the arm relaxed at the side —
+ * that's the orientation imu_calibrate() assumes when it samples gravity.
  */
 
 #include "imu.h"
@@ -118,7 +122,7 @@ void imu_calibrate(void)
 {
     if (!s_initialized) return;
 
-    ESP_LOGI(TAG, "Calibrating gravity — keep bar stationary...");
+    ESP_LOGI(TAG, "Calibrating gravity — keep wrist/arm stationary...");
     const int N = 200;
     float sum_az = 0.0f;
     ImuSample buf[16];

@@ -3,12 +3,16 @@ idf_component_register(
         "main.cpp"
         "imu.cpp"
         "signal.cpp"
+        "hr.cpp"
+        "battery.cpp"
+        "power.cpp"
         "ble.cpp"
     INCLUDE_DIRS
         "."
     REQUIRES
         driver
         esp_timer
+        esp_hw_support
         bt
         nvs_flash
         freertos

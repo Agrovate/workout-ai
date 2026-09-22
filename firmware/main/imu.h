@@ -18,7 +18,7 @@ typedef struct {
 bool imu_init(int sda_pin, int scl_pin, uint32_t freq_hz);
 
 // Collect ~200 samples at rest and compute the gravity offset for each axis.
-// Call once after imu_init() with the bar stationary.
+// Call once after imu_init() with the wrist/arm stationary at rest.
 void imu_calibrate(void);
 
 // Drain the FIFO and write up to max_samples into buf.

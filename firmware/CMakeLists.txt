@@ -4,4 +4,4 @@ set(IDF_TARGET "esp32")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(workout-clip)
+project(workout-band)

@@ -1,12 +1,13 @@
 /*
- * ble.cpp — NimBLE GATT server for the WorkoutClip device.
+ * ble.cpp — NimBLE GATT server for the WorkoutBand device.
  *
  * Service: A0000001-0000-1000-8000-00805F9B34FB
  * Characteristics (all in the same namespace, suffix changes):
  *   REP_EVENT    0002  Notify      8 bytes
  *   SET_SUMMARY  0003  Notify+Read 12 bytes
- *   DEV_STATUS   0004  Read        4 bytes
+ *   DEV_STATUS   0004  Read        5 bytes
  *   CALIBRATE    0005  Write       1 byte
+ *   HR_STATUS    0006  Notify+Read 5 bytes
  */
 
 #include "ble.h"
@@ -25,7 +26,7 @@
 #include <string.h>
 
 static const char *TAG = "ble";
-static const char *DEVICE_NAME = "WorkoutClip";
+static const char *DEVICE_NAME = "WorkoutBand";
 
 // ── 128-bit UUIDs (16 bytes, little-endian as NimBLE expects) ─────────────────
 // UUID format: A000xxxx-0000-1000-8000-00805F9B34FB
@@ -66,12 +67,21 @@ static const ble_uuid128_t s_chr_cal_uuid = {
                0x05, 0x00, 0x00, 0xA0 },
 };
 
+static const ble_uuid128_t s_chr_hr_uuid = {
+    .u     = { .type = BLE_UUID_TYPE_128 },
+    .value = { 0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00,
+               0x00, 0x80, 0x00, 0x10, 0x00, 0x00,
+               0x06, 0x00, 0x00, 0xA0 },
+};
+
 // ── State ─────────────────────────────────────────────────────────────────────
 static uint16_t s_conn_handle       = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_rep_val_handle    = 0;
 static uint16_t s_set_val_handle    = 0;
+static uint16_t s_hr_val_handle     = 0;
 
-static DeviceStatusPacket s_status  = { 0, 100, 0, FIRMWARE_REV };
+static DeviceStatusPacket s_status  = { 0, 100, 0, FIRMWARE_REV, 0 };
+static HrStatusPacket s_hr_status   = { 0, 0, 0, 0 };
 static bool s_calibrate_requested   = false;
 
 // ── GATT access callbacks ─────────────────────────────────────────────────────
@@ -97,6 +107,14 @@ static int cb_calibrate_write(uint16_t conn_handle, uint16_t attr_handle,
         }
     }
     return 0;
+}
+
+static int cb_hr_read(uint16_t conn_handle, uint16_t attr_handle,
+                       struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle; (void)attr_handle; (void)arg;
+    int rc = os_mbuf_append(ctxt->om, &s_hr_status, sizeof(s_hr_status));
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
 // ── GATT table ────────────────────────────────────────────────────────────────
@@ -148,6 +166,17 @@ static const struct ble_gatt_chr_def s_chrs[] = {
         .flags        = BLE_GATT_CHR_F_WRITE,
         .min_key_size = 0,
         .val_handle   = nullptr,
+        .cpfd         = nullptr,
+    },
+    // HR_STATUS — notify + read
+    {
+        .uuid         = &s_chr_hr_uuid.u,
+        .access_cb    = cb_hr_read,
+        .arg          = nullptr,
+        .descriptors  = nullptr,
+        .flags        = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
+        .min_key_size = 0,
+        .val_handle   = &s_hr_val_handle,
         .cpfd         = nullptr,
     },
     // Terminator — uuid == NULL signals end of characteristic list
@@ -288,6 +317,13 @@ bool ble_is_connected(void)
     return s_conn_handle != BLE_HS_CONN_HANDLE_NONE;
 }
 
+bool ble_check_calibrate_request(void)
+{
+    if (!s_calibrate_requested) return false;
+    s_calibrate_requested = false;
+    return true;
+}
+
 void ble_notify_rep(const RepEventPacket *pkt)
 {
     if (!ble_is_connected() || s_rep_val_handle == 0) return;
@@ -305,4 +341,12 @@ void ble_notify_set(const SetSummaryPacket *pkt)
 void ble_update_status(const DeviceStatusPacket *pkt)
 {
     memcpy(&s_status, pkt, sizeof(DeviceStatusPacket));
+}
+
+void ble_notify_hr(const HrStatusPacket *pkt)
+{
+    memcpy(&s_hr_status, pkt, sizeof(HrStatusPacket));
+    if (!ble_is_connected() || s_hr_val_handle == 0) return;
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(pkt, sizeof(HrStatusPacket));
+    if (om) ble_gatts_notify_custom(s_conn_handle, s_hr_val_handle, om);
 }

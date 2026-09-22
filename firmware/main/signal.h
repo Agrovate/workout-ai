@@ -8,7 +8,7 @@
 typedef enum {
     EVT_NONE = 0,
     EVT_REP_COMPLETE,    // a rep just finished
-    EVT_SET_COMPLETE,    // bar racked — set is over
+    EVT_SET_COMPLETE,    // arm at rest — set is over
 } SignalEventType;
 
 typedef struct {
