@@ -157,3 +157,33 @@ def predict_next_session(
     # ensure exercise_name is always set (cold-start history is empty)
     result["exercise_name"] = exercise_name
     return result
+
+
+def predict_forecast(
+    exercise_name: str,
+    db: Session,
+    days: int = 30,
+    target_reps: int | None = None,
+    recent_rpe: float | None = None,
+    hrv_rmssd_today: float | None = None,
+    resting_hr_today: float | None = None,
+) -> dict:
+    """
+    Project recommended weight/reps for `exercise_name` over the next `days`
+    calendar days, chaining the predictor forward across simulated future
+    sessions spaced by the exercise's own typical training cadence.
+    """
+    predictor = get_predictor()
+    history = _fetch_exercise_history(db, exercise_name)
+    session_context = {
+        "hrv_rmssd_today": hrv_rmssd_today,
+        "resting_hr_today": resting_hr_today,
+    } if (hrv_rmssd_today is not None or resting_hr_today is not None) else None
+    points = predictor.forecast(
+        history=history,
+        days=days,
+        target_reps=target_reps,
+        recent_rpe=recent_rpe,
+        session_context=session_context,
+    )
+    return {"exercise_name": exercise_name, "points": points}

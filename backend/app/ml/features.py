@@ -59,6 +59,47 @@ def _session_key(record: dict) -> tuple:
     return record.get("session_id") or record.get("date") or ""
 
 
+# Fallback cadence when there isn't enough session history to infer one —
+# a reasonable default for how often a given exercise gets trained.
+DEFAULT_SESSION_INTERVAL_DAYS = 7.0
+
+
+def typical_session_interval_days(history: list[dict[str, Any]]) -> float:
+    """
+    Estimate how many days typically pass between sessions that train this
+    exercise, from the median gap between consecutive distinct session dates
+    in `history`. Falls back to `DEFAULT_SESSION_INTERVAL_DAYS` when there
+    are fewer than two distinct dates to compare.
+    """
+    dates: list[date] = []
+    for r in history:
+        d = r.get("date")
+        if isinstance(d, str):
+            try:
+                d = date.fromisoformat(d[:10])
+            except ValueError:
+                continue
+        if isinstance(d, date) and (not dates or d != dates[-1]):
+            dates.append(d)
+
+    distinct_sorted = sorted(set(dates))
+    if len(distinct_sorted) < 2:
+        return DEFAULT_SESSION_INTERVAL_DAYS
+
+    gaps = [
+        (b - a).days
+        for a, b in zip(distinct_sorted, distinct_sorted[1:])
+        if (b - a).days > 0
+    ]
+    if not gaps:
+        return DEFAULT_SESSION_INTERVAL_DAYS
+
+    gaps.sort()
+    mid = len(gaps) // 2
+    median = gaps[mid] if len(gaps) % 2 else (gaps[mid - 1] + gaps[mid]) / 2
+    return max(1.0, float(median))
+
+
 # ── public API ────────────────────────────────────────────────────────────────
 
 def build_prediction_features(

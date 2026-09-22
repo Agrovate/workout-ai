@@ -5,6 +5,7 @@ import type {
   WorkoutSessionCreate,
   PredictionRequest,
   PredictionResponse,
+  ForecastResponse,
 } from '../types/api';
 
 const BASE = '/api';
@@ -51,3 +52,8 @@ export const getPrediction = (data: PredictionRequest) =>
     method: 'POST',
     body: JSON.stringify(data),
   });
+
+export const getForecast = (exerciseName: string, days = 30) =>
+  request<ForecastResponse>(
+    `/predictions/forecast?exercise_name=${encodeURIComponent(exerciseName)}&days=${days}`,
+  );

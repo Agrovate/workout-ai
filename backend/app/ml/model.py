@@ -32,6 +32,7 @@ from __future__ import annotations
 import csv
 import logging
 import math
+from datetime import date, timedelta
 from typing import Any
 
 import joblib
@@ -47,12 +48,14 @@ from app.ml.features import (
     FEATURE_COLS,
     build_prediction_features,
     build_training_dataset,
+    typical_session_interval_days,
 )
 
 logger = logging.getLogger(__name__)
 
 MIN_TRAIN_SAMPLES = 10  # below this, use heuristic
 PLATE_INCREMENT = 2.5   # round predictions to nearest 2.5
+_FORECAST_CONFIDENCE_DECAY = 0.92  # per-step confidence shrink in forecast()
 
 # ── Strong App CSV column names ───────────────────────────────────────────────
 _CSV_DATE     = "Date"
@@ -232,6 +235,7 @@ class ProgressionPredictor:
         target_reps: int | None = None,
         recent_rpe: float | None = None,
         session_context: dict[str, Any] | None = None,
+        as_of_date: Any = None,
     ) -> dict:
         """
         Predict the next set for an exercise.
@@ -241,6 +245,10 @@ class ProgressionPredictor:
                    set_order, avg_hr_bpm (optional), hrv_rmssd_ms (optional).
         `session_context`: optional dict with today's biometrics before any set:
                    hrv_rmssd_today, resting_hr_today
+        `as_of_date`: the date this prediction is being made for (a `date` or
+                   ISO string). Defaults to today; `forecast()` passes each
+                   simulated future date so `days_since_last` is computed
+                   relative to that point rather than the real "today".
         Returns a dict compatible with PredictionResponse.
         """
         if not self._fitted:
@@ -269,7 +277,7 @@ class ProgressionPredictor:
                 "confidence": None,
             }
 
-        feats = build_prediction_features(history, target_reps, session_context)
+        feats = build_prediction_features(history, target_reps, session_context, as_of_date)
         x = [[feats[col] for col in FEATURE_COLS]]
         raw_weight = float(self._pipeline.predict(x)[0])
         weight = _round_plate(max(0.0, raw_weight))
@@ -285,6 +293,93 @@ class ProgressionPredictor:
             "recommended_reps": reps,
             "confidence": confidence,
         }
+
+    def forecast(
+        self,
+        history: list[dict[str, Any]],
+        days: int = 30,
+        target_reps: int | None = None,
+        recent_rpe: float | None = None,
+        session_context: dict[str, Any] | None = None,
+    ) -> list[dict]:
+        """
+        Project recommended weight/reps forward over a calendar horizon.
+
+        This is *not* a single model call — sets aren't logged daily, so a
+        30-day "forecast" means chaining `predict_next()` across simulated
+        future sessions, spaced by this exercise's own typical training
+        cadence (median gap between past session dates; see
+        `typical_session_interval_days`), and feeding each step's prediction
+        back in as if it were the next real logged set. Stops once the
+        simulated date would fall beyond `days` from the last real session.
+
+        Each recursive step compounds on the model's own prior guess rather
+        than real data, so uncertainty grows with distance — `confidence` is
+        decayed by `_FORECAST_CONFIDENCE_DECAY` per step to reflect that
+        rather than repeating the single-step confidence at every point.
+
+        Returns a list of dicts (chronological, one per simulated session):
+            {date, session_number, recommended_weight, recommended_reps, confidence}
+        """
+        if not history:
+            return []
+
+        last_date = history[-1].get("date")
+        if isinstance(last_date, str):
+            try:
+                last_date = date.fromisoformat(last_date[:10])
+            except ValueError:
+                last_date = date.today()
+        if not isinstance(last_date, date):
+            last_date = date.today()
+
+        interval = typical_session_interval_days(history)
+        assumed_rpe = recent_rpe if recent_rpe is not None else float(history[-1].get("rpe") or 7.0)
+
+        sim_history = list(history)
+        points: list[dict] = []
+        step = 0
+        while True:
+            step += 1
+            sim_date = last_date + timedelta(days=round(interval * step))
+            if (sim_date - last_date).days > days:
+                break
+
+            # HRV/resting-HR readiness only applies to the very next real
+            # session — later simulated sessions have no such signal.
+            ctx = session_context if step == 1 else None
+
+            result = self.predict_next(
+                history=sim_history,
+                target_reps=target_reps,
+                recent_rpe=assumed_rpe,
+                session_context=ctx,
+                as_of_date=sim_date,
+            )
+
+            confidence = result.get("confidence")
+            if confidence is not None:
+                confidence = round(confidence * (_FORECAST_CONFIDENCE_DECAY ** (step - 1)), 3)
+
+            points.append({
+                "date": sim_date,
+                "session_number": step,
+                "recommended_weight": result["recommended_weight"],
+                "recommended_reps": result["recommended_reps"],
+                "confidence": confidence,
+            })
+
+            sim_history = sim_history + [{
+                "exercise_name": result["exercise_name"],
+                "session_id": f"forecast-{step}",
+                "date": sim_date.isoformat(),
+                "set_order": 0,
+                "weight": result["recommended_weight"],
+                "reps": result["recommended_reps"],
+                "rpe": assumed_rpe,
+            }]
+
+        return points
 
     def _prediction_confidence(
         self, x: list[list[float]], predicted_weight: float

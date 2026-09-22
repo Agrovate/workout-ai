@@ -4,8 +4,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
 } from 'recharts';
-import { getWorkouts, getExercises, getPrediction } from '../api/client';
-import type { WorkoutSession, Exercise, PredictionResponse } from '../types/api';
+import { getWorkouts, getExercises, getPrediction, getForecast } from '../api/client';
+import type { WorkoutSession, Exercise, PredictionResponse, ForecastResponse } from '../types/api';
 import './Analytics.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -133,6 +133,7 @@ export function Analytics() {
   const [selectedExercise, setSelectedExercise] = useState('');
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [forecast, setForecast] = useState<ForecastResponse | null>(null);
 
   useEffect(() => {
     Promise.all([getWorkouts(), getExercises()])
@@ -153,6 +154,11 @@ export function Analytics() {
       .then(setPrediction)
       .catch(() => setPrediction(null))
       .finally(() => setPredicting(false));
+
+    setForecast(null);
+    getForecast(selectedExercise, 30)
+      .then(setForecast)
+      .catch(() => setForecast(null));
   }, [selectedExercise]);
 
   // exercise id → name map
@@ -222,20 +228,25 @@ export function Analytics() {
       .map(([date, weight]) => ({ date: fmtDate(date), weight, predicted: undefined as number | undefined }));
   }, [sessions, exercises, selectedExercise]);
 
-  // Merge historical + predicted into one chart dataset.
-  // The predicted line bridges from the last historical point to the next
-  // recommended weight — historical line stops at the last real session date.
+  // Merge historical + forecast into one chart dataset. The forecast line
+  // bridges from the last historical point and projects out across the next
+  // 30 days of simulated future sessions (see backend forecast() docstring
+  // for why these are spaced by the exercise's typical training cadence
+  // rather than daily).
   const progressionChartData = useMemo(() => {
-    if (!prediction || progressionData.length === 0) return progressionData;
-    const lastWeight = progressionData[progressionData.length - 1].weight;
+    if (!forecast?.points.length || progressionData.length === 0) return progressionData;
+    const lastPoint = progressionData[progressionData.length - 1];
     return [
       ...progressionData,
-      // Bridge point: predicted line starts at last historical weight
-      { date: progressionData[progressionData.length - 1].date, weight: undefined as number | undefined, predicted: lastWeight },
-      // Next point: predicted line ends at recommended weight
-      { date: 'Next', weight: undefined as number | undefined, predicted: prediction.recommended_weight },
+      // Bridge point: forecast line starts at last historical weight
+      { date: lastPoint.date, weight: undefined as number | undefined, predicted: lastPoint.weight },
+      ...forecast.points.map((p) => ({
+        date: fmtDate(p.date),
+        weight: undefined as number | undefined,
+        predicted: p.recommended_weight,
+      })),
     ];
-  }, [progressionData, prediction]);
+  }, [progressionData, forecast]);
 
   // ── muscle group volume ────────────────────────────────────────────────────
 
@@ -329,7 +340,7 @@ export function Analytics() {
               <div className="analytics__chart-header">
                 <div>
                   <h2 className="analytics__chart-title">Weight Progression</h2>
-                  <p className="analytics__chart-sub">Max weight per session</p>
+                  <p className="analytics__chart-sub">Max weight per session, with a 30-day forecast</p>
                 </div>
                 <select
                   className="analytics__select"
@@ -357,7 +368,7 @@ export function Analytics() {
                     connectNulls={false}
                   />
                   <Line
-                    type="monotone" dataKey="predicted" name="Predicted"
+                    type="monotone" dataKey="predicted" name="Forecast"
                     stroke="#22c55e" strokeWidth={2} strokeDasharray="6 3"
                     dot={{ r: 4, fill: '#22c55e', strokeWidth: 0 }}
                     activeDot={{ r: 5 }}

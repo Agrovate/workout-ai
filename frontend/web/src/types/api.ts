@@ -61,3 +61,16 @@ export interface PredictionRequest {
   target_reps?: number | null;
   recent_rpe?: number | null;
 }
+
+export interface ForecastPoint {
+  date: string;
+  session_number: number;
+  recommended_weight: number;
+  recommended_reps: number;
+  confidence: number | null;
+}
+
+export interface ForecastResponse {
+  exercise_name: string;
+  points: ForecastPoint[];
+}

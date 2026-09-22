@@ -94,3 +94,16 @@ class PredictionResponse(BaseModel):
     recommended_weight: float
     recommended_reps: int
     confidence: float | None = None
+
+
+class ForecastPoint(BaseModel):
+    date: date
+    session_number: int
+    recommended_weight: float
+    recommended_reps: int
+    confidence: float | None = None
+
+
+class ForecastResponse(BaseModel):
+    exercise_name: str
+    points: list[ForecastPoint]
