@@ -61,7 +61,7 @@ class WorkoutSet(Base):
     seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Velocity telemetry from the hardware barbell clip (null for manually logged sets)
+    # Velocity telemetry from the WorkoutBand wrist sensor (null for manually logged sets)
     avg_velocity_mm_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     peak_velocity_mm_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
     velocity_loss_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)

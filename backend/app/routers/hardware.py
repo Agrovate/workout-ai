@@ -1,9 +1,11 @@
 """
 Hardware router — receives completed set data from the mobile app after BLE sync.
 
-The barbell clip sends rep count and velocity telemetry over BLE; the mobile app
-collects it, lets the user confirm weight and RPE, then POSTs the combined payload
-here.  The rep count from hardware is authoritative (not user-entered).
+WorkoutBand, a wrist/forearm-worn IMU + PPG sensor, sends rep count and
+velocity telemetry (plus, when its onboard heart-rate sensor has a confident
+reading, per-set HR) over BLE; the mobile app collects it, lets the user
+confirm weight and RPE, then POSTs the combined payload here.  The rep count
+from hardware is authoritative (not user-entered).
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import WorkoutSession, WorkoutSet
+from app.schemas import SessionHealthUpdate
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
 
@@ -30,6 +33,10 @@ class HardwareSetIn(BaseModel):
     velocity_loss_pct: int = Field(ge=0, le=100)
     set_duration_s: int = Field(ge=0)
     notes: str | None = None
+    # From WorkoutBand's onboard PPG sensor during the set (omitted, not
+    # zeroed, when signal quality was too low to trust — see hr.cpp).
+    avg_hr_bpm: int | None = Field(default=None, ge=0)
+    peak_hr_bpm: int | None = Field(default=None, ge=0)
 
 
 class HardwareSetOut(BaseModel):
@@ -46,6 +53,8 @@ class HardwareSetOut(BaseModel):
     peak_velocity_mm_s: int | None
     velocity_loss_pct: int | None
     source: str | None
+    avg_hr_bpm: int | None
+    peak_hr_bpm: int | None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -53,7 +62,7 @@ class HardwareSetOut(BaseModel):
 @router.post("/sets", response_model=HardwareSetOut, status_code=201)
 def ingest_hardware_set(payload: HardwareSetIn, db: Session = Depends(get_db)):
     """
-    Receive a completed set from the mobile app after BLE sync with the barbell clip.
+    Receive a completed set from the mobile app after BLE sync with WorkoutBand.
     """
     session = db.get(WorkoutSession, payload.session_id)
     if not session:
@@ -71,6 +80,8 @@ def ingest_hardware_set(payload: HardwareSetIn, db: Session = Depends(get_db)):
         velocity_loss_pct=payload.velocity_loss_pct,
         notes=payload.notes,
         source="hardware",
+        avg_hr_bpm=payload.avg_hr_bpm,
+        peak_hr_bpm=payload.peak_hr_bpm,
     )
     db.add(workout_set)
     db.commit()
@@ -88,3 +99,36 @@ def get_hardware_sets(session_id: int, db: Session = Depends(get_db)):
         WorkoutSet.source == "hardware",
     ).order_by(WorkoutSet.set_order)
     return db.scalars(stmt).all()
+
+
+@router.patch("/session/{session_id}", status_code=200)
+def attach_hardware_readiness(
+    session_id: int,
+    payload: SessionHealthUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Attach HRV/resting-HR readiness data captured by WorkoutBand's onboard PPG
+    sensor (worn continuously through the workout, unlike Apple Watch which
+    is queried after the fact) to an existing session.
+
+    Same fields as POST /healthkit/session/{id}, different source — there's
+    no per-field provenance tracking, so whichever endpoint the mobile app
+    calls last for a session wins. Fine for single-user local dev; revisit
+    if HealthKit and WorkoutBand readings ever need to coexist per-session.
+    """
+    session = db.get(WorkoutSession, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if payload.started_at is not None:
+        session.started_at = payload.started_at
+    if payload.ended_at is not None:
+        session.ended_at = payload.ended_at
+    if payload.hrv_rmssd_ms is not None:
+        session.hrv_rmssd_ms = payload.hrv_rmssd_ms
+    if payload.resting_hr_bpm is not None:
+        session.resting_hr_bpm = payload.resting_hr_bpm
+
+    db.commit()
+    return {"ok": True}
