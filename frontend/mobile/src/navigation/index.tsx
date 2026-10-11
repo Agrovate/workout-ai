@@ -9,6 +9,7 @@ import { ExercisesScreen } from '../screens/ExercisesScreen';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
 import { LogWorkoutScreen } from '../screens/LogWorkoutScreen';
 import { WorkoutDetailScreen } from '../screens/WorkoutDetailScreen';
+import { WorkoutBandScreen } from '../screens/WorkoutBandScreen';
 import { colors } from '../theme';
 import type { RootStackParamList, TabParamList } from './types';
 
@@ -79,6 +80,11 @@ export function Navigation() {
           name="LogWorkout"
           component={LogWorkoutScreen}
           options={{ title: 'Log Workout' }}
+        />
+        <Stack.Screen
+          name="WorkoutBand"
+          component={WorkoutBandScreen}
+          options={{ title: 'WorkoutBand' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -63,6 +63,8 @@
             echo "  just flash      → flash ESP32 firmware"
             echo ""
 
+            alias vim=nvim
+
             # Python path
             export PYTHONPATH="$PWD/backend:$PYTHONPATH"
 
@@ -101,6 +103,8 @@
             echo "    just flash               → compile + flash + open monitor"
             echo "    just firmware-monitor    → open serial monitor only"
             echo ""
+
+            alias vim=nvim
           '';
         };
       }

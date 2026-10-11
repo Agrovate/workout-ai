@@ -195,6 +195,13 @@ export function LogWorkoutScreen() {
         contentContainerStyle={shared.content}
         keyboardShouldPersistTaps="handled"
       >
+        <TouchableOpacity
+          style={[s.ghostBtn, { alignSelf: 'flex-start', marginBottom: 12 }]}
+          onPress={() => navigation.navigate('WorkoutBand')}
+        >
+          <Text style={s.ghostBtnText}>Connect WorkoutBand</Text>
+        </TouchableOpacity>
+
         {/* Session header */}
         <View style={s.card}>
           <Text style={shared.label}>Workout Name *</Text>

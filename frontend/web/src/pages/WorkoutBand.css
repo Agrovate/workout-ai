@@ -1,0 +1,21 @@
+.wb-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wb-status-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14.5px;
+}
+
+.wb-status-label {
+  color: var(--text-dim);
+}
+
+.wb-pending-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}

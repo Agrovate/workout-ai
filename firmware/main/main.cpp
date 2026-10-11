@@ -28,6 +28,8 @@
  * Flash:  idf.py -p /dev/ttyUSB0 flash monitor
  */
 
+#include <cstring>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"

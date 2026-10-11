@@ -1,11 +1,9 @@
 /*
- * imu.cpp — ICM-42688-P driver via ESP-IDF I2C master.
- *
- * MPU-6050 fallback: swap the register map constants at the bottom of this
- * file (marked MPU-6050 REGISTER MAP).  The rest of the codebase is unchanged.
+ * imu.cpp — MPU-6500 driver via ESP-IDF I2C master.
  *
  * Wiring:  SDA → GPIO21   SCL → GPIO22   (configurable via imu_init args)
  *          VCC → 3.3V      GND → GND      AD0 → GND (I2C addr 0x68)
+ *          NCS → 3.3V (forces I2C mode on breakout boards that also expose SPI)
  *
  * Mounting: worn on the wrist/forearm (band strap), oriented so the
  * accelerometer's Z axis is vertical with the arm relaxed at the side —
@@ -24,28 +22,32 @@
 static const char *TAG = "imu";
 static const i2c_port_t I2C_PORT = I2C_NUM_0;
 
-// ── ICM-42688-P register map ──────────────────────────────────────────────────
-#define ICM_ADDR          0x68
-#define REG_DEVICE_CONFIG 0x11
-#define REG_PWR_MGMT0     0x4E
-#define REG_ACCEL_CONFIG0 0x50
-#define REG_GYRO_CONFIG0  0x4F
-#define REG_FIFO_CONFIG   0x16
-#define REG_FIFO_CONFIG1  0x5F
-#define REG_FIFO_COUNTH   0x2E
-#define REG_FIFO_COUNTL   0x2F
-#define REG_FIFO_DATA     0x30
+// ── MPU-6500 register map ──────────────────────────────────────────────────
+#define MPU_ADDR          0x68
+#define REG_SMPLRT_DIV    0x19
+#define REG_CONFIG        0x1A
+#define REG_GYRO_CONFIG   0x1B
+#define REG_ACCEL_CONFIG  0x1C
+#define REG_FIFO_EN       0x23
+#define REG_USER_CTRL     0x6A
+#define REG_PWR_MGMT_1    0x6B
+#define REG_FIFO_COUNTH   0x72
+#define REG_FIFO_COUNTL   0x73
+#define REG_FIFO_R_W      0x74
 #define REG_WHO_AM_I      0x75
-#define ICM_WHO_AM_I_VAL  0x47   // ICM-42688-P
+#define MPU_WHO_AM_I_VAL  0x70   // MPU-6500
 
-// ACCEL_FS_SEL=±8g (0b01 << 5), ODR=500Hz (0b0110)
-#define ACCEL_CONFIG_VAL  ((0x01 << 5) | 0x06)
-// GYRO_FS_SEL=±500dps (0b010 << 5), ODR=500Hz (0b0110)
-#define GYRO_CONFIG_VAL   ((0x02 << 5) | 0x06)
-// Enable accel + gyro in low-noise mode
-#define PWR_MGMT0_VAL     0x0F
-// FIFO stream mode, accel+gyro packet
-#define FIFO_CONFIG1_VAL  0x07
+// AFS_SEL=2 → ±8g
+#define ACCEL_CONFIG_VAL  0x10
+// FS_SEL=1 → ±500dps
+#define GYRO_CONFIG_VAL   0x08
+// DLPF_CFG=3 (~44Hz accel / 42Hz gyro bandwidth) — also enables the 1kHz
+// internal sample base so SMPLRT_DIV takes effect
+#define CONFIG_VAL        0x03
+// SMPLRT_DIV=1 → 1kHz / (1+1) = 500Hz
+#define SMPLRT_DIV_VAL    0x01
+// FIFO_EN: ACCEL + GYRO X/Y/Z, no temperature → 12-byte packet
+#define FIFO_EN_VAL       0x78
 
 // Scale factors for ±8g and ±500dps at 16-bit resolution
 #define ACCEL_SCALE  (8.0f * 9.81f / 32768.0f)   // m/s² per LSB
@@ -94,27 +96,31 @@ bool imu_init(int sda_pin, int scl_pin, uint32_t freq_hz)
 
     // Verify chip identity
     uint8_t who = 0;
-    if (i2c_read_reg(ICM_ADDR, REG_WHO_AM_I, &who, 1) != ESP_OK || who != ICM_WHO_AM_I_VAL) {
-        ESP_LOGE(TAG, "WHO_AM_I mismatch: got 0x%02X (expected 0x%02X)", who, ICM_WHO_AM_I_VAL);
+    if (i2c_read_reg(MPU_ADDR, REG_WHO_AM_I, &who, 1) != ESP_OK || who != MPU_WHO_AM_I_VAL) {
+        ESP_LOGE(TAG, "WHO_AM_I mismatch: got 0x%02X (expected 0x%02X)", who, MPU_WHO_AM_I_VAL);
         return false;
     }
 
-    // Soft reset, then wait for it to clear
-    i2c_write_reg(ICM_ADDR, REG_DEVICE_CONFIG, 0x01);
+    // Reset, then wake with PLL clock source
+    i2c_write_reg(MPU_ADDR, REG_PWR_MGMT_1, 0x80);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    i2c_write_reg(MPU_ADDR, REG_PWR_MGMT_1, 0x01);
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    // Configure sensor
-    i2c_write_reg(ICM_ADDR, REG_PWR_MGMT0,     PWR_MGMT0_VAL);
-    vTaskDelay(pdMS_TO_TICKS(1));
-    i2c_write_reg(ICM_ADDR, REG_ACCEL_CONFIG0,  ACCEL_CONFIG_VAL);
-    i2c_write_reg(ICM_ADDR, REG_GYRO_CONFIG0,   GYRO_CONFIG_VAL);
+    // Configure DLPF/sample rate and full-scale ranges
+    i2c_write_reg(MPU_ADDR, REG_CONFIG,       CONFIG_VAL);
+    i2c_write_reg(MPU_ADDR, REG_SMPLRT_DIV,   SMPLRT_DIV_VAL);
+    i2c_write_reg(MPU_ADDR, REG_GYRO_CONFIG,  GYRO_CONFIG_VAL);
+    i2c_write_reg(MPU_ADDR, REG_ACCEL_CONFIG, ACCEL_CONFIG_VAL);
 
-    // Enable FIFO: stream mode, accel + gyro
-    i2c_write_reg(ICM_ADDR, REG_FIFO_CONFIG,    0x40);   // stream-to-FIFO mode
-    i2c_write_reg(ICM_ADDR, REG_FIFO_CONFIG1,   FIFO_CONFIG1_VAL);
+    // Reset FIFO, select accel+gyro streams, then enable FIFO operation
+    i2c_write_reg(MPU_ADDR, REG_USER_CTRL, 0x04);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    i2c_write_reg(MPU_ADDR, REG_FIFO_EN,   FIFO_EN_VAL);
+    i2c_write_reg(MPU_ADDR, REG_USER_CTRL, 0x40);
 
     s_initialized = true;
-    ESP_LOGI(TAG, "ICM-42688-P initialised (accel ±8g, gyro ±500dps, ODR 500Hz)");
+    ESP_LOGI(TAG, "MPU-6500 initialised (accel ±8g, gyro ±500dps, ODR 500Hz)");
     return true;
 }
 
@@ -147,10 +153,10 @@ int imu_read_fifo(ImuSample *buf, int max_samples)
 {
     if (!s_initialized) return 0;
 
-    // Read FIFO count
+    // Read FIFO count (13-bit: 5 bits in COUNTH, 8 bits in COUNTL)
     uint8_t cnt_bytes[2];
-    if (i2c_read_reg(ICM_ADDR, REG_FIFO_COUNTH, cnt_bytes, 2) != ESP_OK) return 0;
-    int count = ((cnt_bytes[0] & 0x0F) << 8) | cnt_bytes[1];
+    if (i2c_read_reg(MPU_ADDR, REG_FIFO_COUNTH, cnt_bytes, 2) != ESP_OK) return 0;
+    int count = ((cnt_bytes[0] & 0x1F) << 8) | cnt_bytes[1];
     int packets = count / FIFO_PACKET_BYTES;
     if (packets > max_samples) packets = max_samples;
     if (packets == 0) return 0;
@@ -159,7 +165,7 @@ int imu_read_fifo(ImuSample *buf, int max_samples)
     uint8_t raw[FIFO_PACKET_BYTES];
     int read = 0;
     for (int i = 0; i < packets; i++) {
-        if (i2c_read_reg(ICM_ADDR, REG_FIFO_DATA, raw, FIFO_PACKET_BYTES) != ESP_OK) break;
+        if (i2c_read_reg(MPU_ADDR, REG_FIFO_R_W, raw, FIFO_PACKET_BYTES) != ESP_OK) break;
         buf[read].ax = be16(&raw[0]) * ACCEL_SCALE;
         buf[read].ay = be16(&raw[2]) * ACCEL_SCALE;
         buf[read].az = be16(&raw[4]) * ACCEL_SCALE;
@@ -172,27 +178,3 @@ int imu_read_fifo(ImuSample *buf, int max_samples)
     }
     return read;
 }
-
-/*
- * ── MPU-6050 REGISTER MAP (swap these if using MPU-6050 instead) ─────────────
- *
- * #undef  ICM_ADDR
- * #define ICM_ADDR          0x68
- * #undef  REG_WHO_AM_I
- * #define REG_WHO_AM_I      0x75
- * #undef  ICM_WHO_AM_I_VAL
- * #define ICM_WHO_AM_I_VAL  0x68
- *
- * MPU-6050 config sequence (replace the ICM config block in imu_init):
- *   i2c_write_reg(0x68, 0x6B, 0x00);  // PWR_MGMT_1: wake up
- *   i2c_write_reg(0x68, 0x19, 0x00);  // SMPLRT_DIV: 0 → 1kHz / (1+0) = 1kHz
- *   i2c_write_reg(0x68, 0x1C, 0x10);  // ACCEL_CONFIG: ±8g
- *   i2c_write_reg(0x68, 0x1B, 0x08);  // GYRO_CONFIG: ±500dps
- *
- * MPU-6050 FIFO registers: 0x23 (FIFO_EN), 0x72 (FIFO_COUNTH), 0x74 (FIFO_R_W)
- * ACCEL_SCALE same (±8g, 16-bit) = 8*9.81/32768
- * GYRO_SCALE  same (±500dps, 16-bit)
- *
- * Note: MPU-6050 has no FIFO stream mode; use FIFO_EN register instead.
- * ────────────────────────────────────────────────────────────────────────────
- */

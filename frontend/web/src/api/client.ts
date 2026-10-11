@@ -5,6 +5,9 @@ import type {
   WorkoutSessionCreate,
   PredictionRequest,
   PredictionResponse,
+  HardwareSetIn,
+  HardwareSetOut,
+  HardwareReadinessUpdate,
 } from '../types/api';
 
 const BASE = '/api';
@@ -49,5 +52,18 @@ export const deleteWorkout = (id: number) =>
 export const getPrediction = (data: PredictionRequest) =>
   request<PredictionResponse>('/predictions', {
     method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+// Hardware (WorkoutBand BLE sync)
+export const ingestHardwareSet = (data: HardwareSetIn) =>
+  request<HardwareSetOut>('/hardware/sets', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const syncHardwareReadiness = (sessionId: number, data: HardwareReadinessUpdate) =>
+  request<void>(`/hardware/session/${sessionId}`, {
+    method: 'PATCH',
     body: JSON.stringify(data),
   });

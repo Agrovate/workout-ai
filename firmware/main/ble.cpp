@@ -82,6 +82,7 @@ static uint16_t s_hr_val_handle     = 0;
 
 static DeviceStatusPacket s_status  = { 0, 100, 0, FIRMWARE_REV, 0 };
 static HrStatusPacket s_hr_status   = { 0, 0, 0, 0 };
+static SetSummaryPacket s_set_status = {};
 static bool s_calibrate_requested   = false;
 
 // ── GATT access callbacks ─────────────────────────────────────────────────────
@@ -117,6 +118,25 @@ static int cb_hr_read(uint16_t conn_handle, uint16_t attr_handle,
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
+static int cb_set_read(uint16_t conn_handle, uint16_t attr_handle,
+                        struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle; (void)attr_handle; (void)arg;
+    int rc = os_mbuf_append(ctxt->om, &s_set_status, sizeof(s_set_status));
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+// REP_EVENT is notify-only (no read/write flag ever registers this op), but
+// NimBLE's ble_gatts_chr_is_sane() requires every characteristic to have a
+// non-null access_cb regardless of its flags, so this exists purely to
+// satisfy that check.
+static int cb_rep_noop(uint16_t conn_handle, uint16_t attr_handle,
+                        struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle; (void)attr_handle; (void)ctxt; (void)arg;
+    return 0;
+}
+
 // ── GATT table ────────────────────────────────────────────────────────────────
 // All fields of ble_gatt_chr_def in declaration order:
 //   uuid, access_cb, arg, descriptors, flags, min_key_size, val_handle, cpfd
@@ -127,7 +147,7 @@ static const struct ble_gatt_chr_def s_chrs[] = {
     // REP_EVENT — notify only
     {
         .uuid         = &s_chr_rep_uuid.u,
-        .access_cb    = nullptr,
+        .access_cb    = cb_rep_noop,
         .arg          = nullptr,
         .descriptors  = nullptr,
         .flags        = BLE_GATT_CHR_F_NOTIFY,
@@ -138,7 +158,7 @@ static const struct ble_gatt_chr_def s_chrs[] = {
     // SET_SUMMARY — notify + read
     {
         .uuid         = &s_chr_set_uuid.u,
-        .access_cb    = nullptr,
+        .access_cb    = cb_set_read,
         .arg          = nullptr,
         .descriptors  = nullptr,
         .flags        = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
@@ -243,19 +263,32 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
 
 static void ble_advertise(void)
 {
-    // AD fields: flags + complete name + 128-bit service UUID
+    // Legacy BLE advertising payloads are capped at 31 bytes. Flags (3) +
+    // complete name (13 for "WorkoutBand") + a 128-bit service UUID (18)
+    // adds up to 34 — over the limit, which makes ble_gap_adv_set_fields()
+    // fail and the device never actually starts advertising. Split across
+    // the primary packet (flags + name) and the scan response (service
+    // UUID) instead; scanners request both automatically.
     struct ble_hs_adv_fields fields = {};
     fields.flags                = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.name                 = (const uint8_t *)DEVICE_NAME;
     fields.name_len             = (uint8_t)strlen(DEVICE_NAME);
     fields.name_is_complete     = 1;
-    fields.uuids128             = &s_svc_uuid;
-    fields.num_uuids128         = 1;
-    fields.uuids128_is_complete = 1;
 
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGE(TAG, "adv_set_fields error %d", rc);
+        return;
+    }
+
+    struct ble_hs_adv_fields rsp_fields = {};
+    rsp_fields.uuids128             = &s_svc_uuid;
+    rsp_fields.num_uuids128         = 1;
+    rsp_fields.uuids128_is_complete = 1;
+
+    rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "adv_rsp_set_fields error %d", rc);
         return;
     }
 
@@ -304,8 +337,14 @@ void ble_init(void)
     ble_svc_gap_device_name_set(DEVICE_NAME);
 
     int rc = ble_gatts_count_cfg(s_svcs);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_count_cfg failed: rc=%d", rc);
+    }
     assert(rc == 0);
     rc = ble_gatts_add_svcs(s_svcs);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_add_svcs failed: rc=%d", rc);
+    }
     assert(rc == 0);
 
     nimble_port_freertos_init(nimble_host_task);
@@ -333,6 +372,7 @@ void ble_notify_rep(const RepEventPacket *pkt)
 
 void ble_notify_set(const SetSummaryPacket *pkt)
 {
+    memcpy(&s_set_status, pkt, sizeof(SetSummaryPacket));
     if (!ble_is_connected() || s_set_val_handle == 0) return;
     struct os_mbuf *om = ble_hs_mbuf_from_flat(pkt, sizeof(SetSummaryPacket));
     if (om) ble_gatts_notify_custom(s_conn_handle, s_set_val_handle, om);

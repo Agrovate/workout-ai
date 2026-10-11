@@ -5,6 +5,9 @@ import type {
   WorkoutSessionCreate,
   PredictionRequest,
   PredictionResponse,
+  HardwareSetIn,
+  HardwareSetOut,
+  HardwareReadinessUpdate,
 } from '../types/api';
 
 // iOS Simulator: http://localhost:8000
@@ -50,5 +53,17 @@ export const deleteWorkout = (id: number) =>
 export const getPrediction = (data: PredictionRequest) =>
   request<PredictionResponse>('/predictions', {
     method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const ingestHardwareSet = (data: HardwareSetIn) =>
+  request<HardwareSetOut>('/hardware/sets', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const syncHardwareReadiness = (sessionId: number, data: HardwareReadinessUpdate) =>
+  request<void>(`/hardware/session/${sessionId}`, {
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
