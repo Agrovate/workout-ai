@@ -4,8 +4,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
 } from 'recharts';
-import { getWorkouts, getExercises, getPrediction } from '../api/client';
-import type { WorkoutSession, Exercise, PredictionResponse } from '../types/api';
+import { getWorkouts, getExercises, getPrediction, getPredictionTrajectory } from '../api/client';
+import type { WorkoutSession, Exercise, PredictionResponse, PredictionTrajectoryPoint } from '../types/api';
 import './Analytics.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -113,12 +113,20 @@ const ProgressionTooltip = ({ active, payload, label }: any) => {
   return (
     <div className="chart-tooltip">
       <div className="chart-tooltip__label">{label}</div>
-      {payload.map((p: any) => (
-        <div key={p.dataKey} className="chart-tooltip__row">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <strong>{p.value} kg</strong>
-        </div>
-      ))}
+      {payload.map((p: any) => {
+        const confidence: number | null | undefined = p.payload?.confidence;
+        return (
+          <div key={p.dataKey} className="chart-tooltip__row">
+            <span style={{ color: p.color }}>{p.name}</span>
+            <strong>
+              {p.value} kg
+              {p.dataKey === 'predicted' && confidence != null && (
+                <span className="chart-tooltip__conf"> · {Math.round(confidence * 100)}% confidence</span>
+              )}
+            </strong>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -133,6 +141,8 @@ export function Analytics() {
   const [selectedExercise, setSelectedExercise] = useState('');
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [trajectory, setTrajectory] = useState<PredictionTrajectoryPoint[]>([]);
+  const [assumedRpe, setAssumedRpe] = useState<number | null>(null);
 
   useEffect(() => {
     Promise.all([getWorkouts(), getExercises()])
@@ -148,11 +158,19 @@ export function Analytics() {
   useEffect(() => {
     if (!selectedExercise) return;
     setPrediction(null);
+    setTrajectory([]);
+    setAssumedRpe(null);
     setPredicting(true);
     getPrediction({ exercise_name: selectedExercise })
       .then(setPrediction)
       .catch(() => setPrediction(null))
       .finally(() => setPredicting(false));
+    getPredictionTrajectory(selectedExercise)
+      .then((res) => {
+        setTrajectory(res.points);
+        setAssumedRpe(res.assumed_rpe);
+      })
+      .catch(() => setTrajectory([]));
   }, [selectedExercise]);
 
   // exercise id → name map
@@ -222,20 +240,26 @@ export function Analytics() {
       .map(([date, weight]) => ({ date: fmtDate(date), weight, predicted: undefined as number | undefined }));
   }, [sessions, exercises, selectedExercise]);
 
-  // Merge historical + predicted into one chart dataset.
-  // The predicted line bridges from the last historical point to the next
-  // recommended weight — historical line stops at the last real session date.
+  // Merge historical + a ~2-month projected trajectory into one chart dataset.
+  // The predicted line bridges from the last historical point, then extends
+  // through each future projected point — historical line stops at the last
+  // real session date.
   const progressionChartData = useMemo(() => {
-    if (!prediction || progressionData.length === 0) return progressionData;
+    if (trajectory.length === 0 || progressionData.length === 0) return progressionData;
     const lastWeight = progressionData[progressionData.length - 1].weight;
     return [
       ...progressionData,
       // Bridge point: predicted line starts at last historical weight
       { date: progressionData[progressionData.length - 1].date, weight: undefined as number | undefined, predicted: lastWeight },
-      // Next point: predicted line ends at recommended weight
-      { date: 'Next', weight: undefined as number | undefined, predicted: prediction.recommended_weight },
+      // Projected trajectory: one point per simulated future session
+      ...trajectory.map((p) => ({
+        date: fmtDate(p.date),
+        weight: undefined as number | undefined,
+        predicted: p.weight,
+        confidence: p.confidence,
+      })),
     ];
-  }, [progressionData, prediction]);
+  }, [progressionData, trajectory]);
 
   // ── muscle group volume ────────────────────────────────────────────────────
 
@@ -329,7 +353,10 @@ export function Analytics() {
               <div className="analytics__chart-header">
                 <div>
                   <h2 className="analytics__chart-title">Weight Progression</h2>
-                  <p className="analytics__chart-sub">Max weight per session</p>
+                  <p className="analytics__chart-sub">
+                    Max weight per session · dashed line projects ~2 months ahead,
+                    assuming your typical training frequency{assumedRpe != null && <> and effort (~RPE {assumedRpe})</>} continue
+                  </p>
                 </div>
                 <select
                   className="analytics__select"

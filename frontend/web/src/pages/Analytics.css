@@ -112,6 +112,12 @@
   color: var(--text-h);
 }
 
+.chart-tooltip__conf {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 12px;
+}
+
 /* ── personal records ──────────────────────────────────────────────────── */
 .analytics__pr-grid {
   display: grid;

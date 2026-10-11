@@ -203,10 +203,11 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    // Initialise IMU
+    // Initialise IMU. Optional — if it's not present or fails to probe, the
+    // band keeps working in HR-only mode (rep/set detection is unavailable
+    // without it, but BLE still comes up and HR/HRV telemetry still works).
     if (!imu_init(IMU_SDA_PIN, IMU_SCL_PIN, IMU_FREQ_HZ)) {
-        ESP_LOGE(TAG, "IMU init failed — check wiring. Halting.");
-        while (true) vTaskDelay(portMAX_DELAY);
+        ESP_LOGW(TAG, "IMU init failed — check wiring. Continuing without rep/set detection.");
     }
 
     signal_init();

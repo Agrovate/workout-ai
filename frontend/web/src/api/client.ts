@@ -5,6 +5,7 @@ import type {
   WorkoutSessionCreate,
   PredictionRequest,
   PredictionResponse,
+  PredictionTrajectoryResponse,
   HardwareSetIn,
   HardwareSetOut,
   HardwareReadinessUpdate,
@@ -54,6 +55,9 @@ export const getPrediction = (data: PredictionRequest) =>
     method: 'POST',
     body: JSON.stringify(data),
   });
+
+export const getPredictionTrajectory = (exerciseName: string) =>
+  request<PredictionTrajectoryResponse>(`/predictions/trajectory?exercise_name=${encodeURIComponent(exerciseName)}`);
 
 // Hardware (WorkoutBand BLE sync)
 export const ingestHardwareSet = (data: HardwareSetIn) =>

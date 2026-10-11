@@ -14,6 +14,33 @@ function parseNum(s: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+interface SetHrSummary {
+  avgBpm: number | null;
+  peakBpm: number | null;
+}
+
+interface TimestampedHr extends HrStatus {
+  receivedAt: number;
+}
+
+// HrStatusPacket carries no timestamp (see proto.h) — each reading is
+// stamped client-side the moment its BLE notification arrives.
+const HR_WINDOW_MS = 30000;
+const HR_BUFFER_MS = 120000; // how far back we keep samples around for
+
+// Averages the confident (signalQuality >= 50) readings from the 30 seconds
+// leading up to `asOf` (when the set finished) — a real time-windowed
+// average instead of a single stale snapshot taken whenever the user
+// happens to click Save, and tight enough to mostly exclude inter-set rest.
+function summarizeHr(samples: TimestampedHr[], asOf: number): SetHrSummary {
+  const windowed = samples.filter((s) => asOf - s.receivedAt <= HR_WINDOW_MS);
+  const confident = windowed.filter((s) => s.signalQuality >= 50);
+  if (confident.length === 0) return { avgBpm: null, peakBpm: null };
+  const sum = confident.reduce((acc, s) => acc + s.bpm, 0);
+  const peak = Math.max(...confident.map((s) => s.bpm));
+  return { avgBpm: Math.round(sum / confident.length), peakBpm: peak };
+}
+
 export function WorkoutBand() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [connecting, setConnecting] = useState(false);
@@ -22,6 +49,7 @@ export function WorkoutBand() {
   const [latestHr, setLatestHr] = useState<HrStatus | null>(null);
   const [liveReps, setLiveReps] = useState(0);
   const [pendingSet, setPendingSet] = useState<SetSummary | null>(null);
+  const [pendingSetHr, setPendingSetHr] = useState<SetHrSummary>({ avgBpm: null, peakBpm: null });
   const [exerciseId, setExerciseId] = useState('');
   const [weight, setWeight] = useState('');
   const [rpe, setRpe] = useState('');
@@ -32,6 +60,7 @@ export function WorkoutBand() {
   const sessionIdRef = useRef<number | null>(null);
   const unsubsRef = useRef<Array<() => void>>([]);
   const sessionStartRef = useRef<Date>(new Date());
+  const hrSamplesRef = useRef<TimestampedHr[]>([]);
 
   useEffect(() => {
     getExercises().then(setExercises).catch(() => {});
@@ -54,12 +83,22 @@ export function WorkoutBand() {
       const initialStatus = await readDeviceStatus(connection.service);
       setStatus(initialStatus);
 
+      hrSamplesRef.current = [];
+
       const unsubRep = await subscribeRepEvents(connection.service, (ev) => setLiveReps(ev.repNumber));
       const unsubSet = await subscribeSetSummaries(connection.service, (summary) => {
         setPendingSet(summary);
+        setPendingSetHr(summarizeHr(hrSamplesRef.current, Date.now()));
         setLiveReps(0);
       });
-      const unsubHr = await subscribeHrStatus(connection.service, setLatestHr);
+      const unsubHr = await subscribeHrStatus(connection.service, (reading) => {
+        setLatestHr(reading);
+        const now = Date.now();
+        hrSamplesRef.current = [
+          ...hrSamplesRef.current.filter((s) => now - s.receivedAt <= HR_BUFFER_MS),
+          { ...reading, receivedAt: now },
+        ];
+      });
       unsubsRef.current = [unsubRep, unsubSet, unsubHr];
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect.');
@@ -93,8 +132,6 @@ export function WorkoutBand() {
         sessionIdRef.current = session.id;
       }
 
-      const hrConfident = latestHr !== null && latestHr.signalQuality >= 50;
-
       await ingestHardwareSet({
         session_id: sessionIdRef.current,
         exercise_id: Number(exerciseId),
@@ -106,11 +143,13 @@ export function WorkoutBand() {
         peak_velocity_mm_s: pendingSet.peakVelocityMmS,
         velocity_loss_pct: pendingSet.velocityLossPct,
         set_duration_s: pendingSet.setDurationS,
-        avg_hr_bpm: hrConfident ? latestHr!.bpm : undefined,
+        avg_hr_bpm: pendingSetHr.avgBpm ?? undefined,
+        peak_hr_bpm: pendingSetHr.peakBpm ?? undefined,
       });
 
       setSetsLogged((n) => n + 1);
       setPendingSet(null);
+      setPendingSetHr({ avgBpm: null, peakBpm: null });
       setWeight('');
       setRpe('');
     } catch (err) {
@@ -142,6 +181,8 @@ export function WorkoutBand() {
     setConn(null);
     setStatus(null);
     setPendingSet(null);
+    setPendingSetHr({ avgBpm: null, peakBpm: null });
+    hrSamplesRef.current = [];
     sessionIdRef.current = null;
     setSetsLogged(0);
   }
@@ -205,6 +246,7 @@ export function WorkoutBand() {
             <div className="card" style={{ marginTop: 16 }}>
               <h2 className="wb-pending-title">
                 Set complete — {pendingSet.totalReps} reps, avg {pendingSet.avgVelocityMmS} mm/s
+                {pendingSetHr.avgBpm !== null && <> · {pendingSetHr.avgBpm} bpm avg (peak {pendingSetHr.peakBpm})</>}
               </h2>
 
               <div className="field-row">

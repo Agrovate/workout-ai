@@ -62,6 +62,19 @@ export interface PredictionRequest {
   recent_rpe?: number | null;
 }
 
+export interface PredictionTrajectoryPoint {
+  date: string;
+  weight: number;
+  reps: number;
+  confidence: number | null;
+}
+
+export interface PredictionTrajectoryResponse {
+  exercise_name: string;
+  points: PredictionTrajectoryPoint[];
+  assumed_rpe: number;
+}
+
 // ── WorkoutBand hardware ingest (Web Bluetooth sync) ────────────────────────
 
 export interface HardwareSetIn {

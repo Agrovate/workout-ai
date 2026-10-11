@@ -94,3 +94,16 @@ class PredictionResponse(BaseModel):
     recommended_weight: float
     recommended_reps: int
     confidence: float | None = None
+
+
+class PredictionTrajectoryPoint(BaseModel):
+    date: str
+    weight: float
+    reps: int
+    confidence: float | None = None
+
+
+class PredictionTrajectoryResponse(BaseModel):
+    exercise_name: str
+    points: list[PredictionTrajectoryPoint]
+    assumed_rpe: float
