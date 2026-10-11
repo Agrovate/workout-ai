@@ -243,7 +243,7 @@ export function WorkoutBand() {
           </div>
 
           {pendingSet && (
-            <div className="card" style={{ marginTop: 16 }}>
+            <div className="card wb-pending-card" style={{ marginTop: 16 }}>
               <h2 className="wb-pending-title">
                 Set complete — {pendingSet.totalReps} reps, avg {pendingSet.avgVelocityMmS} mm/s
                 {pendingSetHr.avgBpm !== null && <> · {pendingSetHr.avgBpm} bpm avg (peak {pendingSetHr.peakBpm})</>}

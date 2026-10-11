@@ -97,8 +97,12 @@ export function Exercises() {
                 <div key={group} className="exercise-group">
                   <div className="exercise-group__label">{group}</div>
                   <ul className="exercise-group__list">
-                    {exs.map((ex) => (
-                      <li key={ex.id} className="exercise-item">
+                    {exs.map((ex, i) => (
+                      <li
+                        key={ex.id}
+                        className="exercise-item"
+                        style={i < 12 ? { animationDelay: `${i * 25}ms` } : undefined}
+                      >
                         <span className="exercise-item__name">{ex.name}</span>
                       </li>
                     ))}

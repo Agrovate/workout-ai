@@ -142,7 +142,6 @@ export function Analytics() {
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [predicting, setPredicting] = useState(false);
   const [trajectory, setTrajectory] = useState<PredictionTrajectoryPoint[]>([]);
-  const [assumedRpe, setAssumedRpe] = useState<number | null>(null);
 
   useEffect(() => {
     Promise.all([getWorkouts(), getExercises()])
@@ -159,17 +158,13 @@ export function Analytics() {
     if (!selectedExercise) return;
     setPrediction(null);
     setTrajectory([]);
-    setAssumedRpe(null);
     setPredicting(true);
     getPrediction({ exercise_name: selectedExercise })
       .then(setPrediction)
       .catch(() => setPrediction(null))
       .finally(() => setPredicting(false));
     getPredictionTrajectory(selectedExercise)
-      .then((res) => {
-        setTrajectory(res.points);
-        setAssumedRpe(res.assumed_rpe);
-      })
+      .then((res) => setTrajectory(res.points))
       .catch(() => setTrajectory([]));
   }, [selectedExercise]);
 
@@ -353,10 +348,6 @@ export function Analytics() {
               <div className="analytics__chart-header">
                 <div>
                   <h2 className="analytics__chart-title">Weight Progression</h2>
-                  <p className="analytics__chart-sub">
-                    Max weight per session · dashed line projects ~2 months ahead,
-                    assuming your typical training frequency{assumedRpe != null && <> and effort (~RPE {assumedRpe})</>} continue
-                  </p>
                 </div>
                 <select
                   className="analytics__select"
@@ -458,8 +449,12 @@ export function Analytics() {
           <div className="card">
             <h2 className="analytics__chart-title" style={{ marginBottom: 16 }}>Personal Records</h2>
             <div className="analytics__pr-grid">
-              {records.map((r) => (
-                <div key={r.exercise} className="pr-card">
+              {records.map((r, i) => (
+                <div
+                  key={r.exercise}
+                  className="pr-card"
+                  style={i < 12 ? { animationDelay: `${i * 30}ms` } : undefined}
+                >
                   <div className="pr-card__name">{r.exercise}</div>
                   <div className="pr-card__weight">{r.weight} <span>kg</span></div>
                   <div className="pr-card__meta">

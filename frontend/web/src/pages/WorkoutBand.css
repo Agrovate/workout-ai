@@ -2,6 +2,22 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.wb-status-card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow), var(--ring);
+}
+
+.wb-pending-card {
+  animation: rise 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.wb-pending-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow), var(--ring);
 }
 
 .wb-status-row {

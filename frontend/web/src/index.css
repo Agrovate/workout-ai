@@ -42,8 +42,13 @@
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
   --ring: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  --focus-ring: 0 0 0 4px var(--accent-dim);
+
+  /* The repeated card-surface gradient, previously hardcoded in 4 places */
+  --card-grad: linear-gradient(180deg, var(--surface) 0%, #15151c 100%);
 
   --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 280ms cubic-bezier(0.4, 0, 0.2, 1);
 
   --heatmap-empty: #23233a;
   --sidebar-w: 236px;
@@ -137,7 +142,25 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
   background: var(--surface);
-  box-shadow: 0 0 0 4px var(--accent-dim);
+  box-shadow: var(--focus-ring);
+}
+
+/* Keyboard-only focus ring, reusing the same visual language inputs
+   already have — buttons/links/cards were previously invisible to
+   keyboard navigation. Mouse clicks don't trigger :focus-visible, so
+   this never shows up as an unwanted click outline. */
+a:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+.sidebar__link:focus-visible,
+.mobile-nav__item:focus-visible,
+.workout-card:focus-visible,
+.exercise-item:focus-visible,
+.stat-card:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 select option {
@@ -224,7 +247,7 @@ label {
 
 /* ── Cards ───────────────────────────────────────────────── */
 .card {
-  background: linear-gradient(180deg, var(--surface) 0%, #15151c 100%);
+  background: var(--card-grad);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
   padding: 22px;

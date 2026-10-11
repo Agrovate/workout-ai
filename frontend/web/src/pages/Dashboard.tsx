@@ -126,10 +126,15 @@ export function Dashboard() {
       ) : (
         <>
           <div className="workout-list">
-            {displayed.map((session) => {
+            {displayed.map((session, i) => {
               const exIds = Array.from(new Set(session.sets.map((s) => s.exercise_id)));
               return (
-                <Link key={session.id} to={`/workouts/${session.id}`} className="workout-card">
+                <Link
+                  key={session.id}
+                  to={`/workouts/${session.id}`}
+                  className="workout-card"
+                  style={i < 12 ? { animationDelay: `${i * 40}ms` } : undefined}
+                >
                   <div className="workout-card__rail" />
                   <div className="workout-card__body">
                     <div className="workout-card__meta">

@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.ml.model import ProgressionPredictor, _heuristic
+from app.ml.model import ProgressionPredictor, _round_plate
 
 logger = logging.getLogger(__name__)
 
@@ -190,28 +190,59 @@ def _data_sufficiency(history: list[dict]) -> float:
     return min(1.0, len(sessions_with_rpe) / _DATA_SUFFICIENCY_SESSIONS)
 
 
+def _tier_multiplier(rpe: float) -> float:
+    """Same RPE-tier percentages as ml/model.py's _heuristic, exposed
+    standalone so predict_trajectory can compound on an unrounded running
+    weight instead of re-rounding (and losing sub-plate-increment progress)
+    at every single simulated step — see predict_trajectory's docstring."""
+    if rpe < 6.5:
+        return 1.05
+    elif rpe < 7.5:
+        return 1.025
+    elif rpe <= 8.5:
+        return 1.0
+    else:
+        return 0.95
+
+
 def predict_trajectory(
     exercise_name: str,
     db: Session,
     target_reps: int | None = None,
 ) -> dict:
     """
-    Project a ~2-month forward trajectory using the bounded RPE-tiered
-    heuristic (ml/model.py's _heuristic), chained step over step — never the
-    full ML ensemble, even if the single next-session prediction uses it.
+    Project a ~2-month forward trajectory. The first point is the exact same
+    real prediction the single next-session endpoint (/predictions) returns
+    — same predictor call, same default args — so the two never disagree
+    about "what should I lift next time." Every point after that switches to
+    the bounded RPE-tiered percentages from ml/model.py's _heuristic (see
+    _tier_multiplier), chained step over step — never the full ML ensemble
+    for the *projection* part, even if the real first-step prediction used it.
 
-    The ML model is trained on real logged sequences; chaining it against
-    its own synthetic output (a prediction pretending to be a real set, then
-    another built on that) feeds it data far outside its training
-    distribution, which gradient-boosted trees can extrapolate on
-    erratically. The heuristic's fixed-percentage tiers were explicitly
+    Why the switch after step 1: the ML model is trained on real logged
+    sequences; chaining it against its own synthetic output (a prediction
+    pretending to be a real set, then another built on that) feeds it data
+    far outside its training distribution, which gradient-boosted trees can
+    extrapolate on erratically. That's only a risk once we're projecting
+    multiple steps ahead — the single real first-step prediction has no such
+    problem, since it's computed from real history like any other call to
+    predict_next(). The heuristic's fixed-percentage tiers were explicitly
     designed to be applied repeatedly, so they stay physically plausible
-    (bounded ±5%/±2.5%/0%/-5% per step) however far the chain runs. The
-    heuristic itself has no calibrated ML confidence score (see
-    predict_next()'s heuristic branch), so each point's `confidence` here is
-    a different, honestly-computed proxy instead: real data sufficiency
-    behind `assumed_rpe` (see _data_sufficiency) decayed per simulated step
-    (see _HORIZON_DECAY_PER_STEP) — not a statistical calibration, but not
+    (bounded ±5%/±2.5%/0%/-5% per step) however far the chain runs after that.
+
+    From step 2 onward, the unrounded weight is tracked across the whole
+    chain and only rounded for display at each point — otherwise
+    sub-plate-increment gains get rounded away every single step and the
+    projection never visibly moves, even though real progression is
+    happening underneath.
+
+    Step 1's confidence is whatever the real predictor returned (matching
+    the single-prediction endpoint exactly — may be a calibrated ML score,
+    or None in heuristic mode). Steps 2+ have no calibrated confidence (the
+    heuristic never produces one), so they get a different, honestly-
+    computed proxy instead: real data sufficiency behind `assumed_rpe` (see
+    _data_sufficiency) decayed per simulated step (see
+    _HORIZON_DECAY_PER_STEP) — not a statistical calibration, but not
     fabricated either.
 
     Future session spacing and assumed RPE are both derived from the
@@ -226,10 +257,16 @@ def predict_trajectory(
     gap_days = _avg_session_gap_days(history)
     assumed_rpe = _avg_rpe(history)
     data_confidence = _data_sufficiency(history)
+    predictor = get_predictor()
 
-    sim_history = list(history)
-    last_date = date.fromisoformat(str(sim_history[-1]["date"])[:10])
-    next_order = (sim_history[-1].get("set_order") or 0) + 1
+    last_date = date.fromisoformat(str(history[-1]["date"])[:10])
+    reps = target_reps or int(history[-1].get("reps") or 8)
+
+    # True unrounded weight, carried across steps 2+. Only rounded to the
+    # nearest plate for *display* at each point — not fed back into the
+    # next step's calculation, so sub-plate-increment gains can accumulate
+    # over several simulated weeks instead of being rounded away every step.
+    true_weight = 0.0
 
     points: list[dict] = []
     elapsed_days = 0.0
@@ -239,35 +276,32 @@ def predict_trajectory(
         step += 1
         sim_date = last_date + timedelta(days=round(elapsed_days))
 
-        weight, reps = _heuristic(sim_history, target_reps, assumed_rpe)
-        if weight <= 0:
-            break  # cold-start / nothing to project from
-
-        # Real, computable confidence proxy (not a fabricated gradient):
-        # how much actual history backs assumed_rpe, decayed by how many
-        # simulated steps out this point is — not a calibrated ML statistic,
-        # but an honest "how much should you trust this projection" signal.
-        horizon_confidence = data_confidence * (_HORIZON_DECAY_PER_STEP ** step)
+        if step == 1:
+            # Exactly mirrors predict_next_session()'s call when the caller
+            # (e.g. the Analytics page) passes no explicit recent_rpe — same
+            # history, same args, so this point is identical to the card.
+            result = predictor.predict_next(history=history, target_reps=target_reps)
+            if result["recommended_weight"] <= 0:
+                break  # cold-start / nothing to project from
+            true_weight = result["recommended_weight"]
+            reps = result["recommended_reps"]
+            display_weight = true_weight
+            step_confidence = result.get("confidence")
+        else:
+            if true_weight <= 0:
+                break
+            true_weight *= _tier_multiplier(assumed_rpe)
+            display_weight = _round_plate(true_weight)
+            # Real, computable confidence proxy (not a fabricated gradient):
+            # how much actual history backs assumed_rpe, decayed by how many
+            # simulated steps out this point is.
+            step_confidence = round(data_confidence * (_HORIZON_DECAY_PER_STEP ** step), 3)
 
         points.append({
             "date": sim_date.isoformat(),
-            "weight": weight,
+            "weight": display_weight,
             "reps": reps,
-            "confidence": round(horizon_confidence, 3),
+            "confidence": step_confidence,
         })
-
-        # Feed this simulated result back in so the next iteration builds on it
-        sim_history.append({
-            "exercise_name": exercise_name,
-            "date": sim_date.isoformat(),
-            "session_id": f"sim-{sim_date.isoformat()}",
-            "set_order": next_order,
-            "weight": weight,
-            "reps": reps,
-            "rpe": assumed_rpe,
-            "avg_hr_bpm": None,
-            "hrv_rmssd_ms": None,
-        })
-        next_order += 1
 
     return {"exercise_name": exercise_name, "points": points, "assumed_rpe": round(assumed_rpe, 1)}

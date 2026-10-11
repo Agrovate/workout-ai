@@ -18,7 +18,7 @@
 }
 
 .modal-box {
-  background: linear-gradient(180deg, var(--surface) 0%, #15151c 100%);
+  background: var(--card-grad);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 28px;
