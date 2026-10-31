@@ -8,7 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore": .env also carries provider SDK credentials
+    # (ANTHROPIC_API_KEY, GOOGLE_API_KEY, ...) that those SDKs read directly
+    # from the environment — they aren't Settings fields, so don't fail
+    # startup just because they're present.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # SQLite for local single-user dev. File lives alongside the backend code.
     database_url: str = "sqlite:///./dev.db"
@@ -24,10 +28,11 @@ class Settings(BaseSettings):
     debug: bool = True
 
     # Which chat backend /chat/sessions/{id}/messages uses — "rule_based"
-    # (keyword matching, no network calls) or "claude" (Anthropic API,
-    # tool-calling against the same services the rule-based engine uses).
-    # The Anthropic SDK reads its own credentials (ANTHROPIC_API_KEY etc.)
-    # straight from the environment — no key field needed here.
+    # (keyword matching, no network calls), "claude" (Anthropic API), or
+    # "gemini" (Google's Gemini API), both tool-calling against the same
+    # services the rule-based engine uses. Each SDK reads its own
+    # credentials (ANTHROPIC_API_KEY / GOOGLE_API_KEY) straight from the
+    # environment — no key fields needed here.
     chatbot_provider: str = "rule_based"
 
 

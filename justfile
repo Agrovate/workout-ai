@@ -2,8 +2,13 @@ default:
     @just --list
 
 # Start the FastAPI backend (hot-reload)
+# --env-file loads backend/.env into the process so SDKs that read their own
+# credentials straight from os.environ (ANTHROPIC_API_KEY, GOOGLE_API_KEY)
+# see them too — pydantic-settings' env_file=".env" only populates our own
+# Settings fields, it doesn't export anything to the process environment.
+# Conditional since most setups (rule_based provider) have no .env at all.
 backend:
-    cd backend && DATABASE_URL=sqlite:///./dev.db uv run uvicorn app.main:app --reload --host 0.0.0.0
+    cd backend && DATABASE_URL=sqlite:///./dev.db uv run $(test -f .env && echo --env-file .env) uvicorn app.main:app --reload --host 0.0.0.0
 
 # Start the Vite web dev server
 web:
