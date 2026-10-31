@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { MobileNav } from './components/MobileNav';
+import { ThemeToggle } from './components/ThemeToggle';
 import { Dashboard } from './pages/Dashboard';
 import { Exercises } from './pages/Exercises';
 import { LogWorkout } from './pages/LogWorkout';
@@ -14,6 +15,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="app-shell">
+        <ThemeToggle />
         <Sidebar />
         <main className="app-content">
           <Routes>

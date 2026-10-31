@@ -205,8 +205,8 @@
 /* ── prediction card ───────────────────────────────────────────────────── */
 .pred-card {
   margin-top: 14px;
-  background: rgba(52, 211, 153, 0.07);
-  border: 1px solid rgba(52, 211, 153, 0.25);
+  background: var(--success-bg-soft);
+  border: 1px solid var(--success-border);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   display: flex;
@@ -271,7 +271,7 @@
 .pred-card__divider {
   width: 1px;
   height: 28px;
-  background: rgba(52, 211, 153, 0.25);
+  background: var(--success-border);
   flex-shrink: 0;
 }
 

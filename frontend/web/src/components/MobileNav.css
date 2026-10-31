@@ -11,7 +11,7 @@
     left: 0;
     right: 0;
     height: var(--mobile-nav-h);
-    background: rgba(23, 23, 31, 0.9);
+    background: var(--nav-blur-bg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border-soft);

@@ -12,6 +12,14 @@
       rel="stylesheet"
     />
     <title>Workout AI</title>
+    <script>
+      // Runs before paint so a stored "light" preference doesn't flash dark
+      // first — ThemeToggle keeps this in sync after mount.
+      try {
+        var t = localStorage.getItem('workout-ai:theme');
+        if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
