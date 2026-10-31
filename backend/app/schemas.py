@@ -107,3 +107,29 @@ class PredictionTrajectoryResponse(BaseModel):
     exercise_name: str
     points: list[PredictionTrajectoryPoint]
     assumed_rpe: float
+
+
+# ── Chat (rule-based, no external API) ───────────────────────────────────────
+
+class ChatMessageIn(BaseModel):
+    message: str
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    role: str
+    text: str
+    created_at: datetime
+
+
+class ChatSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatSessionDetail(ChatSessionOut):
+    messages: list[ChatMessageOut] = []

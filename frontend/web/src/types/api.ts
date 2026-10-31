@@ -119,3 +119,27 @@ export interface HardwareReadinessUpdate {
   hrv_rmssd_ms?: number | null;
   resting_hr_bpm?: number | null;
 }
+
+// ── Chat (rule-based, no external API) ──────────────────────────────────────
+
+export interface ChatMessageIn {
+  message: string;
+}
+
+export interface ChatMessageOut {
+  id: number;
+  role: 'user' | 'bot';
+  text: string;
+  created_at: string;
+}
+
+export interface ChatSessionOut {
+  id: number;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatSessionDetail extends ChatSessionOut {
+  messages: ChatMessageOut[];
+}

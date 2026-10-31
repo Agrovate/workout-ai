@@ -7,6 +7,7 @@ import { LogWorkout } from './pages/LogWorkout';
 import { WorkoutDetail } from './pages/WorkoutDetail';
 import { Analytics } from './pages/Analytics';
 import { WorkoutBand } from './pages/WorkoutBand';
+import { Chat } from './pages/Chat';
 import './App.css';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/workouts/:id" element={<WorkoutDetail />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/workout-band" element={<WorkoutBand />} />
+            <Route path="/chat" element={<Chat />} />
           </Routes>
         </main>
         <MobileNav />

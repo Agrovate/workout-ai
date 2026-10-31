@@ -9,6 +9,10 @@ import type {
   HardwareSetIn,
   HardwareSetOut,
   HardwareReadinessUpdate,
+  ChatMessageIn,
+  ChatMessageOut,
+  ChatSessionOut,
+  ChatSessionDetail,
 } from '../types/api';
 
 const BASE = '/api';
@@ -69,5 +73,23 @@ export const ingestHardwareSet = (data: HardwareSetIn) =>
 export const syncHardwareReadiness = (sessionId: number, data: HardwareReadinessUpdate) =>
   request<void>(`/hardware/session/${sessionId}`, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+
+// Chat (rule-based, no external API) — persisted sessions
+export const listChatSessions = () => request<ChatSessionOut[]>('/chat/sessions');
+
+export const createChatSession = () =>
+  request<ChatSessionOut>('/chat/sessions', { method: 'POST' });
+
+export const getChatSession = (id: number) =>
+  request<ChatSessionDetail>(`/chat/sessions/${id}`);
+
+export const deleteChatSession = (id: number) =>
+  request<void>(`/chat/sessions/${id}`, { method: 'DELETE' });
+
+export const postChatMessage = (sessionId: number, data: ChatMessageIn) =>
+  request<ChatMessageOut>(`/chat/sessions/${sessionId}/messages`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
