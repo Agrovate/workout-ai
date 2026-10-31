@@ -32,7 +32,8 @@ _RECOMMEND_WORKOUT_RE = re.compile(
     r"\b(recommend|suggest)\b.*\bworkouts?\b"
     r"|\bpopular workouts?\b"
     r"|\bworkout (idea|suggestion|recommendation)s?\b"
-    r"|\bwhat workout should i do\b",
+    r"|\bnext workout\b"  # "what's my next workout", "which should be my next workout"
+    r"|\b(what|which) workout\b.*\bshould i do\b",
     re.IGNORECASE,
 )
 
