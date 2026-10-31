@@ -3,16 +3,20 @@ Chat sessions — persisted so a conversation survives a page reload and the
 user can resume it later or start a fresh one, rather than the chat living
 only in frontend component state.
 """
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.models import ChatMessage, ChatSession
 from app.schemas import ChatMessageIn, ChatMessageOut, ChatSessionDetail, ChatSessionOut
-from app.services.chatbot import handle_message
+from app.services.chat_providers import get_chat_provider
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -65,11 +69,24 @@ def post_message(session_id: int, payload: ChatMessageIn, db: Session = Depends(
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
+    history = list(session.messages)  # prior turns, before this message is added
+
     db.add(ChatMessage(session_id=session_id, role="user", text=payload.message))
     if session.title is None:
         session.title = _title_from(payload.message)
 
-    reply_text = handle_message(payload.message, db)
+    try:
+        reply_text = get_chat_provider().reply(payload.message, db, history)
+    except Exception:
+        # A provider failure (e.g. missing/invalid ANTHROPIC_API_KEY, network
+        # error) shouldn't 500 the whole request — the user's message is
+        # still worth saving, paired with an explanatory reply instead.
+        logger.exception("Chat provider '%s' failed to generate a reply", settings.chatbot_provider)
+        reply_text = (
+            f"The '{settings.chatbot_provider}' chat backend hit an error — check the backend "
+            "logs (likely a missing/invalid API key if you're using the claude provider)."
+        )
+
     bot_message = ChatMessage(session_id=session_id, role="bot", text=reply_text)
     db.add(bot_message)
 

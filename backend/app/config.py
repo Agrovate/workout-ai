@@ -23,5 +23,12 @@ class Settings(BaseSettings):
     app_name: str = "Workout Progression API"
     debug: bool = True
 
+    # Which chat backend /chat/sessions/{id}/messages uses — "rule_based"
+    # (keyword matching, no network calls) or "claude" (Anthropic API,
+    # tool-calling against the same services the rule-based engine uses).
+    # The Anthropic SDK reads its own credentials (ANTHROPIC_API_KEY etc.)
+    # straight from the environment — no key field needed here.
+    chatbot_provider: str = "rule_based"
+
 
 settings = Settings()
