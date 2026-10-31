@@ -21,11 +21,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Exercise, WorkoutSession, WorkoutSet
+from app.services.popular_workouts import recommend_workouts
 from app.services.prediction import predict_next_session, predict_trajectory
 
 _GREETING_RE = re.compile(r"\b(hi|hello|hey|sup)\b", re.IGNORECASE)
 _FAREWELL_RE = re.compile(r"\b(bye|goodbye|see ya|thanks|thank you|thx)\b", re.IGNORECASE)
 _HELP_RE = re.compile(r"\b(help|what can you do|commands)\b", re.IGNORECASE)
+
+_RECOMMEND_WORKOUT_RE = re.compile(
+    r"\b(recommend|suggest)\b.*\bworkouts?\b"
+    r"|\bpopular workouts?\b"
+    r"|\bworkout (idea|suggestion|recommendation)s?\b"
+    r"|\bwhat workout should i do\b",
+    re.IGNORECASE,
+)
 
 _PR_RE = re.compile(
     r"\b(pr|personal record|max weight|heaviest|one.?rep max|1rm)\b", re.IGNORECASE
@@ -86,7 +95,8 @@ _HELP_TEXT = (
     "- Personal records (\"what's my PR for bench press\")\n"
     "- When you last trained something (\"when did I last do deadlift\")\n"
     "- Your exercises, overall or by muscle group (\"what exercises do I have\", \"leg exercises\")\n"
-    "- Your workout history (\"show my last workout\", \"recent workouts\", \"how many workouts have I done\")"
+    "- Your workout history (\"show my last workout\", \"recent workouts\", \"how many workouts have I done\")\n"
+    "- Popular workout ideas from the training dataset (\"recommend a workout\")"
 )
 
 
@@ -140,6 +150,17 @@ def handle_message(message: str, db: Session) -> str:
 
     if _HELP_RE.search(message):
         return _HELP_TEXT
+
+    if _RECOMMEND_WORKOUT_RE.search(message):
+        templates = recommend_workouts(limit=3)
+        if not templates:
+            return "I don't have the popular-workouts dataset available to make a recommendation."
+        lines = []
+        for i, t in enumerate(templates, start=1):
+            line = f"{i}. {t['name']} (seen in {t['session_count']} logged sessions"
+            line += f" — usually: {', '.join(t['exercises'])})" if t["exercises"] else ")"
+            lines.append(line)
+        return "Popular workout splits (from the training dataset, not your own history):\n" + "\n".join(lines)
 
     exercise = _find_exercise(message, db)
 
